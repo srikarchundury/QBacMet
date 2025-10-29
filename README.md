@@ -1,4 +1,4 @@
-### Quantum Backend Metric Collector (QBacMet)
+## Quantum Backend Metric Collector
 
 QBacMet is a vendor-agnostic metrics/feature "tap" that can be attached
 to any quantum job sim/hardware without having to rewrite experiments.
@@ -61,10 +61,10 @@ Everything between algorithm and actually running it on either an HPC simulator 
 
 #### 2.2 Post-Transpilation Metrics
 
-&emsp; &emsp; 17. hw circ width
-&emsp; &emsp; 18. hw circ depth
+&emsp; &emsp; 17. hw circ width  
+&emsp; &emsp; 18. hw circ depth  
 &emsp; &emsp; 19. hw circ connectivity degree (in the active area, for instance in IBM-Q)  
-&emsp; &emsp; 20. hw circ #connected components
+&emsp; &emsp; 20. hw circ #connected components  
 &emsp; &emsp; 21. hc circ "SWAPS"  
 
 ---
@@ -74,8 +74,8 @@ Broadly, two kinds of backends:
 
 #### 3.1 Simulator Features
 
-&emsp; &emsp; 22. SV?
-&emsp; &emsp; 23. TN?
+&emsp; &emsp; 22. SV?  
+&emsp; &emsp; 23. TN?  
 &emsp; &emsp; 24. if TN, max-bond-dim  
 &emsp; &emsp; 25. CPU based?  
 &emsp; &emsp; 26. GPU based?  
@@ -108,8 +108,8 @@ In that case, we'd have another queue apart from the HPC queue we accounted for 
 ---
 
 ### Layer-5 (Post-Processing Features/Metrics)
-This layer deals with things after:
+This layer deals with things after execution.
 
 &emsp; &emsp; 41. Mitigation overhead? time taken  
 &emsp; &emsp; 42. Quantum Error Correction syndrome extraction time?  
-&emsp; &emsp; 43. Result marshalling time based on what the frontend needs.
+&emsp; &emsp; 43. Result marshalling time based on what the frontend needs.  
