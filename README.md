@@ -15,7 +15,7 @@ Our tool makes it easy to collect both metrics and features of various component
 
 ---
 
-### Layer-0 (SLURM-HPC Metrics/Features)
+<u>### Layer-0 (SLURM-HPC Metrics/Features)</u>
 This layer is the highest level of abstraction which revolves around how Q-HPC workflows look like abstractly, and where does the end user interface with.
 User/Client writes a program in qiskit/pennylane/cuda-q etc that has the ability to interact with multi CPU/GPU/QPU alike.
 How do they have the ability? via QFw, Qiskit's C API, Munich Quantum Stack?, NVQLink (the new Q-HPC interconnect, released in this Nvidia GTC).
@@ -27,7 +27,7 @@ How do they have the ability? via QFw, Qiskit's C API, Munich Quantum Stack?, NV
 
 ---
 
-### Layer-1 (Algorithm Metrics)
+<u>### Layer-1 (Algorithm Metrics)</u>
 This layer answers "what are we executing?". This more about the algorithm and not hardware specific circuits.
 
 Two kinds: Variational & non-Variational workloads.
@@ -50,7 +50,7 @@ Two kinds: Variational & non-Variational workloads.
 
 ---
 
-### Layer-2 (Backend specific Metrics/Features)
+<u>### Layer-2 (Backend specific Metrics/Features)</u>
 Everything between algorithm and actually running it on either an HPC simulator or actual QPU. So, we split this into sub types.
 
 #### 2.1 Transpilation Features
@@ -65,10 +65,11 @@ Everything between algorithm and actually running it on either an HPC simulator 
 
 ---
 
-### Layer-3 (Backend Features)
+<u>### Layer-3 (Backend Features)</u>
 Broadly, two kinds of backends:
 
 #### 3.1 Simulator Features
+
 22. SV?  
 23. TN?  
 24. if TN, max-bond-dim  
@@ -79,6 +80,7 @@ Broadly, two kinds of backends:
 29. Precision (#bits per complex/real or complex/imag)  
 
 #### 3.2 H/W Features
+
 30. Cycle Layer Ops Per Second (CLOPS)  
 31. quantum volume  
 32. T1 time (relaxation)  
@@ -91,7 +93,7 @@ Broadly, two kinds of backends:
 
 ---
 
-### Layer-4 (Execution Metrics)
+<u>### Layer-4 (Execution Metrics)</u>
 This layer is basically that runs the circuit, so runtime is the primary metric here!
 But if backend is not local and not readily available and reserved for this particular job. In that case, we'd have another queue apart from the HPC queue we accounted for in Layer-0.
 
@@ -100,7 +102,7 @@ But if backend is not local and not readily available and reserved for this part
 
 ---
 
-### Layer-5 (Post-Processing Features/Metrics)
+<u>### Layer-5 (Post-Processing Features/Metrics)</u>
 This layer deals with things after:
 
 41. Mitigation overhead? time taken  
