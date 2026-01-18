@@ -14,5 +14,6 @@ class Layer():
 	def mark_end(self):
 		self.end_time = perf_counter()
 		self.tt = self.end_time - self.start_time
-	
-	
+
+	def get_metrics(self):
+		return self.metrics
