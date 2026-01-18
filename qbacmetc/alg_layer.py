@@ -13,14 +13,16 @@ class AlgLayer(Layer):
 		# Try to infer framework and call get_metrics automatically
 		if algo_obj is not None:
 			return self.get_metrics(algo_obj, **kwargs)
-		# Try to find a QuantumCircuit or QNode in the caller's frame
+		# Scan all frames for QuantumCircuit or QNode
 		frame = inspect.currentframe().f_back
-		for var in frame.f_locals.values():
-			try:
-				if self._is_qiskit_circuit(var) or self._is_pennylane_obj(var):
-					return self.get_metrics(var, **kwargs)
-			except Exception:
-				continue
+		while frame:
+			for var in frame.f_locals.values():
+				try:
+					if self._is_qiskit_circuit(var) or self._is_pennylane_obj(var):
+						return self.get_metrics(var, **kwargs)
+				except Exception:
+					continue
+			frame = frame.f_back
 		return {}
 
 	def get_metrics(self, algo_obj, shots=None, optimizer=None, iterations=None, repetitions=None):
@@ -54,18 +56,26 @@ class AlgLayer(Layer):
 
 	def _extract_qiskit_metrics(self, qc, shots):
 		from qiskit.converters import circuit_to_dag
+		def get_val(obj, attr):
+			val = getattr(obj, attr, None)
+			if callable(val):
+				try:
+					return val()
+				except Exception:
+					return None
+			return val
 		metrics = {
 			'framework': 'qiskit',
-			'width': qc.num_qubits,
-			'depth': qc.depth(),
-			'num_clbits': qc.num_clbits,
-			'num_ops': qc.size(),
-			'gate_counts': qc.count_ops(),
-			'num_parameters': qc.num_parameters,
+			'width': get_val(qc, 'num_qubits'),
+			'depth': get_val(qc, 'depth'),
+			'num_clbits': get_val(qc, 'num_clbits'),
+			'num_ops': get_val(qc, 'size'),
+			'gate_counts': get_val(qc, 'count_ops'),
+			'num_parameters': get_val(qc, 'num_parameters'),
 			'shots': shots if shots is not None else None
 		}
 		dag = circuit_to_dag(qc)
-		metrics['critical_path_length'] = dag.depth()
+		metrics['critical_path_length'] = get_val(dag, 'depth')
 		metrics['connected_components'] = len(list(dag.connected_components())) if hasattr(dag, 'connected_components') else None
 		clifford_gates = {'h', 's', 'sdg', 'x', 'y', 'z', 'cx', 'cz', 'swap'}
 		non_clifford_gates = set(metrics['gate_counts'].keys()) - clifford_gates
@@ -84,23 +94,22 @@ class AlgLayer(Layer):
 	def _extract_pennylane_metrics(self, obj, shots):
 		import pennylane as qml
 		tape, wires, operations = None, None, None
+		# If QNode, ensure it has been executed and tape is available
 		if isinstance(obj, qml.QNode):
-			# Call QNode with zeros for all parameters, try both scalar and array
-			num_params = getattr(obj, 'num_params', 1)
-			params = [0.0] * num_params
-			called = False
-			try:
-				_ = obj(*params)
-				called = True
-			except Exception:
-				pass
-			if not called:
-				import numpy as np
-				try:
-					_ = obj(*[np.array([0.0] * num_params)])
-				except Exception:
-					pass
 			tape = getattr(obj, 'qtape', None) or getattr(obj, 'tape', None)
+			if tape is None:
+				# Try to execute with zeros to generate tape
+				num_params = getattr(obj, 'num_params', 1)
+				params = [0.0] * num_params
+				try:
+					_ = obj(*params)
+				except Exception:
+					try:
+						import numpy as np
+						_ = obj(*[np.array([0.0] * num_params)])
+					except Exception:
+						pass
+				tape = getattr(obj, 'qtape', None) or getattr(obj, 'tape', None)
 			wires = getattr(obj.device, 'wires', None) if hasattr(obj, 'device') else None
 			if tape is not None and hasattr(tape, 'wires'):
 				wires = tape.wires

@@ -28,16 +28,22 @@ class BackendLayer(Layer):
 		self.features['scheduling_policy'] = run_config.get('scheduling_policy', None)
 
 	def auto_collect(self):
-		# Try to find backend/transpile/run_config objects in the caller's frame
+		# Scan all frames for backend/transpile/run_config objects
 		frame = inspect.currentframe().f_back
-		for var in frame.f_locals.values():
-			if hasattr(var, 'name') and hasattr(var, 'version'):
-				self.collect_backend_details(var)
-			if hasattr(var, 'optimization_level'):
-				self.collect_transpilation_features(var)
-			if isinstance(var, dict) and ('cost' in var or 'scheduling_policy' in var):
-				self.collect_run_dependent_features(var)
+		found = False
+		while frame:
+			for var in frame.f_locals.values():
+				if hasattr(var, 'name') and hasattr(var, 'version'):
+					self.collect_backend_details(var)
+					found = True
+				if hasattr(var, 'optimization_level'):
+					self.collect_transpilation_features(var)
+					found = True
+				if isinstance(var, dict) and ('cost' in var or 'scheduling_policy' in var):
+					self.collect_run_dependent_features(var)
+					found = True
+			frame = frame.f_back
 		# Also auto-collect some env info
 		self.features['env_backend'] = os.environ.get('QBACMET_BACKEND')
-		return {'metrics': self.metrics, 'features': self.features}
+		return {'metrics': self.metrics, 'features': self.features} if found else {'metrics': {}, 'features': {'env_backend': os.environ.get('QBACMET_BACKEND')}}
 	

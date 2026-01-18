@@ -26,6 +26,7 @@ class QBacMetCollector:
 
     def auto_collect_all(self):
         if self.collecting:
+            self.metrics['slurm'] = self.slurm_layer.auto_collect()
             self.metrics['algorithm'] = self.alg_layer.auto_collect()
             self.metrics['transpile'] = self.transpile_layer.auto_collect()
             self.metrics['backend'] = self.backend_layer.auto_collect()

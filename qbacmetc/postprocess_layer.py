@@ -22,15 +22,21 @@ class PostprocessLayer(Layer):
 		self.metrics['result_marshalling_time'] = marshal_info.get('result_marshalling_time', None)
 
 	def auto_collect(self):
-		# Try to find mitigation/qec/marshal info in the caller's frame
+		# Scan all frames for mitigation/qec/marshal info
 		frame = inspect.currentframe().f_back
-		for var in frame.f_locals.values():
-			if isinstance(var, dict) and 'mitigation_overhead' in var:
-				self.collect_mitigation_overhead(var)
-			if isinstance(var, dict) and 'qec_syndrome_time' in var:
-				self.collect_qec_syndrome_time(var)
-			if isinstance(var, dict) and 'result_marshalling_time' in var:
-				self.collect_result_marshalling_time(var)
-		return self.get_metrics()
+		found = False
+		while frame:
+			for var in frame.f_locals.values():
+				if isinstance(var, dict) and 'mitigation_overhead' in var:
+					self.collect_mitigation_overhead(var)
+					found = True
+				if isinstance(var, dict) and 'qec_syndrome_time' in var:
+					self.collect_qec_syndrome_time(var)
+					found = True
+				if isinstance(var, dict) and 'result_marshalling_time' in var:
+					self.collect_result_marshalling_time(var)
+					found = True
+			frame = frame.f_back
+		return self.get_metrics() if found else {}
 
 	

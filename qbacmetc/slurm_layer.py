@@ -3,9 +3,42 @@
 from .layer import Layer
 
 
+import os
+import inspect
+
 class SlurmLayer(Layer):
 	def __init__(self):
 		super().__init__()
+		self.metrics = {}
+
+	def auto_collect(self):
+		# Collect SLURM/HPC metrics from environment and commands, all as floats if possible
+		def to_float(val):
+			try:
+				return float(val)
+			except (TypeError, ValueError):
+				return val
+		self.metrics = {}  # Reset to avoid duplicates
+		self.metrics['job_id'] = to_float(os.environ.get('SLURM_JOB_ID'))
+		self.metrics['partition'] = os.environ.get('SLURM_JOB_PARTITION')
+		self.metrics['nodelist'] = os.environ.get('SLURM_JOB_NODELIST')
+		self.metrics['ntasks'] = to_float(os.environ.get('SLURM_NTASKS'))
+		self.metrics['cpus_on_node'] = to_float(os.environ.get('SLURM_CPUS_ON_NODE'))
+		self.metrics['scheduling_policy'] = os.environ.get('SLURM_SCHEDULING_POLICY')
+		# Optionally, try to get more info using SLURM commands if available
+		try:
+			partitions = self.get_partitions()
+			if isinstance(partitions, dict) and 'error' not in partitions:
+				self.metrics['partitions'] = partitions
+		except Exception:
+			pass
+		try:
+			nodes = self.get_nodes()
+			if isinstance(nodes, list):
+				self.metrics['nodes'] = nodes
+		except Exception:
+			pass
+		return self.metrics
 	
 
 	import subprocess
