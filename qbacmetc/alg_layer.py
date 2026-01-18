@@ -4,9 +4,24 @@ from .layer import Layer
 
 
 
+import inspect
 class AlgLayer(Layer):
 	def __init__(self):
 		super().__init__()
+
+	def auto_collect(self, algo_obj=None, **kwargs):
+		# Try to infer framework and call get_metrics automatically
+		if algo_obj is not None:
+			return self.get_metrics(algo_obj, **kwargs)
+		# Try to find a QuantumCircuit or QNode in the caller's frame
+		frame = inspect.currentframe().f_back
+		for var in frame.f_locals.values():
+			try:
+				if self._is_qiskit_circuit(var) or self._is_pennylane_obj(var):
+					return self.get_metrics(var, **kwargs)
+			except Exception:
+				continue
+		return {}
 
 	def get_metrics(self, algo_obj, shots=None, optimizer=None, iterations=None, repetitions=None):
 		"""
