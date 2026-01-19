@@ -74,6 +74,7 @@ class QBacMetCollector:
 			# If backend.run is read-only, just skip wrapping
 			return
 
+
 	def _install_hooks(self):
 		# Qiskit transpile hook
 		try:
@@ -98,12 +99,26 @@ class QBacMetCollector:
 
 				backend = kwargs.get("backend", None)
 				if backend is not None:
-					self.backend_layer.set_backend_details(backend)
-					self._wrap_backend_run(backend)
+					try:
+						self.backend_layer.set_backend_details(backend)
+						self._wrap_backend_run(backend)
+					except ImportError as e:
+						# Record ImportError in backend metrics
+						self.backend_layer.metrics["import_error"] = str(e)
+						self.backend_layer.metrics["backend_details_error"] = True
+						# Optionally, add to execution layer as well
+						self.execution_layer.metrics["backend_import_error"] = str(e)
 
-				t0 = perf_counter()
-				out = self._orig_qiskit_compiler_transpile(*args, **kwargs) if self._orig_qiskit_compiler_transpile else self._orig_qiskit_transpile(*args, **kwargs)
-				t1 = perf_counter()
+				try:
+					t0 = perf_counter()
+					out = self._orig_qiskit_compiler_transpile(*args, **kwargs) if self._orig_qiskit_compiler_transpile else self._orig_qiskit_transpile(*args, **kwargs)
+					t1 = perf_counter()
+				except ImportError as e:
+					# Record ImportError in backend metrics
+					self.backend_layer.metrics["import_error"] = str(e)
+					self.backend_layer.metrics["transpile_error"] = True
+					self.execution_layer.metrics["transpile_import_error"] = str(e)
+					return None
 
 				# Record transpile time
 				self.execution_layer.metrics["transpile_time"] = self.execution_layer.metrics.get("transpile_time", 0.0) or 0.0
@@ -125,8 +140,11 @@ class QBacMetCollector:
 			if self._orig_qiskit_compiler_transpile is not None:
 				qiskit.compiler.transpile = hooked_transpile
 
-		except Exception:
-			pass
+		except Exception as e:
+			# If import fails, record in backend metrics
+			self.backend_layer.metrics["import_error"] = str(e)
+			self.backend_layer.metrics["qiskit_hook_error"] = True
+			self.execution_layer.metrics["qiskit_hook_import_error"] = str(e)
 
 		# PennyLane QNode hook
 		try:
