@@ -35,4 +35,4 @@ class TestBackendLayer(unittest.TestCase):
 		self.assertEqual(layer.features["scheduling_policy"], "FIFO")
 
 if __name__ == "__main__":
-	unittest.main()
+	unittest.main(verbosity=2)

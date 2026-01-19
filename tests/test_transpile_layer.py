@@ -30,4 +30,4 @@ class TestTranspileLayer(unittest.TestCase):
 		self.assertEqual(layer.metrics["hw_circ_num_2q_gates"], 11)
 
 if __name__ == "__main__":
-	unittest.main()
+	unittest.main(verbosity=2)

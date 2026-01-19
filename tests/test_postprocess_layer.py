@@ -21,4 +21,4 @@ class TestPostprocessLayer(unittest.TestCase):
 		self.assertEqual(layer.metrics["result_marshalling_time"], 0.8)
 
 if __name__ == "__main__":
-	unittest.main()
+	unittest.main(verbosity=2)
