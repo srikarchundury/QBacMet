@@ -3,21 +3,21 @@
 from .layer import Layer
 
 
-import inspect
 class TranspileLayer(Layer):
 	"""
-	Collects transpilation and post-transpilation metrics/features.
+	Collects transpilation features (inputs/knobs) and compiled-circuit metrics.
+	Populated reliably by collector hooks; can also be set manually.
 	"""
 	def __init__(self):
 		super().__init__()
-		self.metrics = {}
 
-	def collect_transpilation_metrics(self, transpile_obj):
-		self.metrics['error_mitigation_level'] = getattr(transpile_obj, 'error_mitigation_level', None)
-		self.metrics['optimization_level'] = getattr(transpile_obj, 'optimization_level', None)
+	def set_transpile_features(self, **kwargs):
+		# Vendor-agnostic: capture knobs without forcing a schema
+		for k, v in kwargs.items():
+			self.features[k] = v
 
-	def collect_post_transpilation_metrics(self, hw_circ):
-		def get_val(obj, attr):
+	def set_compiled_circuit_metrics(self, hw_circ):
+		def safe_call(obj, attr):
 			val = getattr(obj, attr, None)
 			if callable(val):
 				try:
@@ -25,24 +25,19 @@ class TranspileLayer(Layer):
 				except Exception:
 					return None
 			return val
-		self.metrics['hw_circ_width'] = get_val(hw_circ, 'width')
-		self.metrics['hw_circ_depth'] = get_val(hw_circ, 'depth')
-		self.metrics['hw_circ_connectivity_degree'] = get_val(hw_circ, 'connectivity_degree')
-		self.metrics['hw_circ_connected_components'] = get_val(hw_circ, 'connected_components')
-		self.metrics['hw_circ_swaps'] = get_val(hw_circ, 'swaps')
+
+		gate_counts = safe_call(hw_circ, "count_ops")
+		if gate_counts is None:
+			gate_counts = {}
+
+		self.metrics["hw_circ_width"] = safe_call(hw_circ, "num_qubits")
+		self.metrics["hw_circ_depth"] = safe_call(hw_circ, "depth")
+		self.metrics["hw_circ_num_ops"] = safe_call(hw_circ, "size")
+		self.metrics["hw_circ_gate_counts"] = dict(gate_counts) if isinstance(gate_counts, dict) else {}
+
+		# Common post-transpile derived metrics
+		self.metrics["hw_circ_swaps"] = self.metrics["hw_circ_gate_counts"].get("swap", 0)
+		self.metrics["hw_circ_num_2q_gates"] = sum(self.metrics["hw_circ_gate_counts"].get(g, 0) for g in ["cx", "cz", "swap"])
 
 	def auto_collect(self):
-		# Scan all frames for transpile/hw_circ objects
-		frame = inspect.currentframe().f_back
-		found = False
-		while frame:
-			for var in frame.f_locals.values():
-				if hasattr(var, 'error_mitigation_level') or hasattr(var, 'optimization_level'):
-					self.collect_transpilation_metrics(var)
-					found = True
-				if hasattr(var, 'width') and hasattr(var, 'depth'):
-					self.collect_post_transpilation_metrics(var)
-					found = True
-			frame = frame.f_back
-		return self.get_metrics() if found else {}
-	
+		return self.get_payload()

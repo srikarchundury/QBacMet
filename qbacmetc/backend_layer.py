@@ -1,49 +1,55 @@
 # This is for Layer-3 in README.md
 
 from .layer import Layer
-
-
 import os
-import inspect
+
+
 class BackendLayer(Layer):
 	"""
-	Collects backend-specific metrics and features, including transpilation, error mitigation, and hardware details.
+	Collects backend features (sim vs HW), backend identity/version, and run-dependent settings if available.
+	Primarily populated by collector hooks.
 	"""
 	def __init__(self):
 		super().__init__()
-		self.metrics = {}
-		self.features = {}
 
-	def collect_transpilation_features(self, transpile_obj):
-		self.features['optimization_level'] = getattr(transpile_obj, 'optimization_level', None)
-		self.features['error_mitigation'] = getattr(transpile_obj, 'error_mitigation', None)
+	def set_backend_details(self, backend_obj):
+		def safe_call(obj, attr):
+			val = getattr(obj, attr, None)
+			if callable(val):
+				try:
+					return val()
+				except Exception:
+					return None
+			return val
 
-	def collect_backend_details(self, backend_obj):
-		self.features['backend_name'] = getattr(backend_obj, 'name', None)
-		self.features['backend_version'] = getattr(backend_obj, 'version', None)
-		self.features['max_bond_dim'] = getattr(backend_obj, 'max_bond_dim', None)
+		name = safe_call(backend_obj, "name")
+		version = safe_call(backend_obj, "version")
 
-	def collect_run_dependent_features(self, run_config):
-		self.features['cost'] = run_config.get('cost', None)
-		self.features['scheduling_policy'] = run_config.get('scheduling_policy', None)
+		self.features["backend_name"] = name
+		self.features["backend_version"] = version
+
+		# Heuristics: simulator type / hw
+		is_sim = False
+		try:
+			mod = backend_obj.__class__.__module__ or ""
+			if "aer" in mod.lower() or "simulator" in (str(name).lower() if name else ""):
+				is_sim = True
+		except Exception:
+			pass
+
+		self.features["backend_is_simulator"] = is_sim
+
+	def set_simulator_features(self, **kwargs):
+		# Examples: sv/tn/max_bond_dim/cpu/gpu/nodes/cores/precision
+		for k, v in kwargs.items():
+			self.features[k] = v
+
+	def set_run_dependent_features(self, run_config):
+		if isinstance(run_config, dict):
+			for k, v in run_config.items():
+				self.features[k] = v
 
 	def auto_collect(self):
-		# Scan all frames for backend/transpile/run_config objects
-		frame = inspect.currentframe().f_back
-		found = False
-		while frame:
-			for var in frame.f_locals.values():
-				if hasattr(var, 'name') and hasattr(var, 'version'):
-					self.collect_backend_details(var)
-					found = True
-				if hasattr(var, 'optimization_level'):
-					self.collect_transpilation_features(var)
-					found = True
-				if isinstance(var, dict) and ('cost' in var or 'scheduling_policy' in var):
-					self.collect_run_dependent_features(var)
-					found = True
-			frame = frame.f_back
-		# Also auto-collect some env info
-		self.features['env_backend'] = os.environ.get('QBACMET_BACKEND')
-		return {'metrics': self.metrics, 'features': self.features} if found else {'metrics': {}, 'features': {'env_backend': os.environ.get('QBACMET_BACKEND')}}
-	
+		# Always at least include env hints
+		self.features["env_backend"] = os.environ.get("QBACMET_BACKEND")
+		return self.get_payload()

@@ -1,19 +1,17 @@
 # This is for Layer-1 in README.md
 
 from .layer import Layer
-
-
-
 import inspect
+
+
 class AlgLayer(Layer):
 	def __init__(self):
 		super().__init__()
 
 	def auto_collect(self, algo_obj=None, **kwargs):
-		# Try to infer framework and call get_metrics automatically
 		if algo_obj is not None:
 			return self.get_metrics(algo_obj, **kwargs)
-		# Scan all frames for QuantumCircuit or QNode
+
 		frame = inspect.currentframe().f_back
 		while frame:
 			for var in frame.f_locals.values():
@@ -23,40 +21,38 @@ class AlgLayer(Layer):
 				except Exception:
 					continue
 			frame = frame.f_back
+
 		return {}
 
 	def get_metrics(self, algo_obj, shots=None, optimizer=None, iterations=None, repetitions=None):
-		"""
-		Extracts circuit and variational metrics from Qiskit or PennyLane objects.
-		algo_obj: Qiskit QuantumCircuit or PennyLane QNode/QuantumTape
-		"""
 		try:
 			if self._is_qiskit_circuit(algo_obj):
 				return self._extract_qiskit_metrics(algo_obj, shots)
 			if self._is_pennylane_obj(algo_obj):
 				return self._extract_pennylane_metrics(algo_obj, shots)
 		except Exception as e:
-			return {'error': str(e)}
+			return {"error": str(e)}
 		return {}
 
-	def get_variational_metrics(self, optimizer=None, iterations=None, repetitions=None):
-		"""Return variational algorithm metrics."""
+	def get_variational_metrics(self, optimizer=None, iterations=None, repetitions=None, classical_time=None):
 		return {
-			'optimizer': optimizer,
-			'iterations': iterations,
-			'repetitions': repetitions
+			"optimizer": optimizer,
+			"iterations": iterations,
+			"repetitions": repetitions,
+			"classical_optimizer_time": classical_time
 		}
 
 	def _is_qiskit_circuit(self, obj):
 		try:
 			from qiskit import QuantumCircuit
 			return isinstance(obj, QuantumCircuit)
-		except ImportError:
+		except Exception:
 			return False
 
 	def _extract_qiskit_metrics(self, qc, shots):
 		from qiskit.converters import circuit_to_dag
-		def get_val(obj, attr):
+
+		def safe_call(obj, attr):
 			val = getattr(obj, attr, None)
 			if callable(val):
 				try:
@@ -64,117 +60,176 @@ class AlgLayer(Layer):
 				except Exception:
 					return None
 			return val
+
+		gate_counts = safe_call(qc, "count_ops")
+		if gate_counts is None:
+			gate_counts = {}
+
 		metrics = {
-			'framework': 'qiskit',
-			'width': get_val(qc, 'num_qubits'),
-			'depth': get_val(qc, 'depth'),
-			'num_clbits': get_val(qc, 'num_clbits'),
-			'num_ops': get_val(qc, 'size'),
-			'gate_counts': get_val(qc, 'count_ops'),
-			'num_parameters': get_val(qc, 'num_parameters'),
-			'shots': shots if shots is not None else None
+			"framework": "qiskit",
+			"width": safe_call(qc, "num_qubits"),
+			"depth": safe_call(qc, "depth"),
+			"num_clbits": safe_call(qc, "num_clbits"),
+			"num_ops": safe_call(qc, "size"),
+			"gate_counts": dict(gate_counts) if isinstance(gate_counts, dict) else {},
+			"num_parameters": safe_call(qc, "num_parameters"),
+			"shots": shots
 		}
-		dag = circuit_to_dag(qc)
-		metrics['critical_path_length'] = get_val(dag, 'depth')
-		metrics['connected_components'] = len(list(dag.connected_components())) if hasattr(dag, 'connected_components') else None
-		clifford_gates = {'h', 's', 'sdg', 'x', 'y', 'z', 'cx', 'cz', 'swap'}
-		non_clifford_gates = set(metrics['gate_counts'].keys()) - clifford_gates
-		metrics['num_cliffords'] = sum(metrics['gate_counts'].get(g, 0) for g in clifford_gates)
-		metrics['num_non_cliffords'] = sum(metrics['gate_counts'].get(g, 0) for g in non_clifford_gates)
-		metrics['num_2q_gates'] = sum(metrics['gate_counts'].get(g, 0) for g in ['cx', 'cz', 'swap'])
+
+		try:
+			dag = circuit_to_dag(qc)
+			metrics["critical_path_length"] = safe_call(dag, "depth")
+			if hasattr(dag, "connected_components"):
+				metrics["connected_components"] = len(list(dag.connected_components()))
+			else:
+				metrics["connected_components"] = None
+		except Exception:
+			metrics["critical_path_length"] = None
+			metrics["connected_components"] = None
+
+		# Heuristic classification (document as such)
+		clifford_gates = {"h", "s", "sdg", "x", "y", "z", "cx", "cz", "swap", "sx", "sxdg"}
+		non_clifford_gates = set(metrics["gate_counts"].keys()) - clifford_gates
+
+		metrics["num_cliffords"] = sum(metrics["gate_counts"].get(g, 0) for g in clifford_gates)
+		metrics["num_non_cliffords"] = sum(metrics["gate_counts"].get(g, 0) for g in non_clifford_gates)
+		metrics["num_2q_gates"] = sum(metrics["gate_counts"].get(g, 0) for g in ["cx", "cz", "swap"])
+
 		return metrics
 
 	def _is_pennylane_obj(self, obj):
 		try:
 			import pennylane as qml
-			return isinstance(obj, qml.QNode) or (hasattr(obj, 'operations') and hasattr(obj, 'wires'))
-		except ImportError:
+			return isinstance(obj, qml.QNode) or (hasattr(obj, "operations") and hasattr(obj, "wires"))
+		except Exception:
 			return False
 
 	def _extract_pennylane_metrics(self, obj, shots):
 		import pennylane as qml
-		tape, wires, operations = None, None, None
-		# If QNode, ensure it has been executed and tape is available
-		if isinstance(obj, qml.QNode):
-			tape = getattr(obj, 'qtape', None) or getattr(obj, 'tape', None)
-			if tape is None:
-				# Try to execute with zeros to generate tape
-				num_params = getattr(obj, 'num_params', 1)
-				params = [0.0] * num_params
-				try:
-					_ = obj(*params)
-				except Exception:
-					try:
-						import numpy as np
-						_ = obj(*[np.array([0.0] * num_params)])
-					except Exception:
-						pass
-				tape = getattr(obj, 'qtape', None) or getattr(obj, 'tape', None)
-			wires = getattr(obj.device, 'wires', None) if hasattr(obj, 'device') else None
-			if tape is not None and hasattr(tape, 'wires'):
-				wires = tape.wires
-			operations = tape.operations if tape and hasattr(tape, 'operations') else []
-		elif hasattr(obj, 'operations') and hasattr(obj, 'wires'):
+
+		tape = None
+
+		# Case A: already a tape / quantum script-like
+		if hasattr(obj, "operations") and hasattr(obj, "wires"):
 			tape = obj
-			wires = tape.wires
-			operations = tape.operations if hasattr(tape, 'operations') else []
-		# Make wires always a list for consistent length calculation
-		if wires is not None:
-			if isinstance(wires, (set, tuple)):
-				wires = list(wires)
-		if tape is not None and operations and wires is not None:
-			metrics = {
-				'framework': 'pennylane',
-				'width': len(wires),
-				'depth': self._get_pennylane_depth_from_ops(operations, wires),
-				'num_ops': len(operations),
-				'gate_counts': self._get_pennylane_gate_counts_from_ops(operations),
-				'num_parameters': len(tape.get_parameters()) if tape and hasattr(tape, 'get_parameters') else None,
-				'shots': shots if shots is not None else getattr(tape, 'shots', None),
-				'critical_path_length': self._get_pennylane_depth_from_ops(operations, wires),
-				'connected_components': None,
-				'num_cliffords': self._count_pennylane_cliffords_from_ops(operations),
-				'num_non_cliffords': len(operations) - self._count_pennylane_cliffords_from_ops(operations),
-				'num_2q_gates': self._count_pennylane_2q_gates_from_ops(operations)
+
+		# Case B: QNode - try many common attribute names
+		if tape is None and isinstance(obj, qml.QNode):
+			for name in ["tape", "qtape", "_tape", "_qtape", "_tape_cached", "_qscript"]:
+				cand = getattr(obj, name, None)
+				if cand is not None and hasattr(cand, "operations") and hasattr(cand, "wires"):
+					tape = cand
+					break
+
+		# Case C: QNode - construct tape without executing (best effort)
+		if tape is None and isinstance(obj, qml.QNode):
+			tape = self._construct_pl_tape_best_effort(obj)
+
+		if tape is None:
+			return {
+				"framework": "pennylane",
+				"error": "No tape found/constructed for QNode."
 			}
-			return metrics
-		# Debug info if metrics are empty
-		return {
-			'debug_tape': str(tape),
-			'debug_wires': str(wires),
-			'debug_operations': str(operations),
-			'error': 'Could not extract PennyLane metrics. Tape/wires/operations missing.'
+
+		operations = getattr(tape, "operations", []) or []
+		wires = getattr(tape, "wires", None)
+		wire_list = list(wires) if wires is not None else []
+
+		metrics = {
+			"framework": "pennylane",
+			"width": len(wire_list) if wire_list is not None else None,
+			"depth": self._get_pennylane_depth_from_ops(operations, wire_list),
+			"num_ops": len(operations),
+			"gate_counts": self._get_pennylane_gate_counts_from_ops(operations),
+			"num_parameters": len(tape.get_parameters()) if hasattr(tape, "get_parameters") else None,
+			"shots": shots if shots is not None else getattr(tape, "shots", None),
+			"critical_path_length": self._get_pennylane_depth_from_ops(operations, wire_list),
+			"connected_components": None,
+			"num_cliffords": self._count_pennylane_cliffords_from_ops(operations),
+			"num_non_cliffords": len(operations) - self._count_pennylane_cliffords_from_ops(operations),
+			"num_2q_gates": self._count_pennylane_2q_gates_from_ops(operations)
 		}
+		return metrics
+
+	def _construct_pl_tape_best_effort(self, qnode):
+		# Try modern helpers first; fall back to older ones if present.
+		try:
+			import pennylane as qml
+			import numpy as np
+
+			# Make dummy args based on signature: fill with 0.0
+			import inspect as _inspect
+			sig = _inspect.signature(qnode)
+			dummy_args = []
+			for p in sig.parameters.values():
+				if p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD):
+					continue
+				if p.default is not p.empty:
+					dummy_args.append(p.default)
+				else:
+					dummy_args.append(0.0)
+
+			# Try qml.workflow.construct_tape(qnode)(*args)
+			try:
+				construct_tape = getattr(qml.workflow, "construct_tape", None)
+				if construct_tape is not None:
+					tape = construct_tape(qnode)(*dummy_args)
+					if tape is not None and hasattr(tape, "operations") and hasattr(tape, "wires"):
+						return tape
+			except Exception:
+				pass
+
+			# Try qml.transforms.make_tape(qnode)(*args)
+			try:
+				make_tape = getattr(qml.transforms, "make_tape", None)
+				if make_tape is not None:
+					tape = make_tape(qnode)(*dummy_args)
+					if tape is not None and hasattr(tape, "operations") and hasattr(tape, "wires"):
+						return tape
+			except Exception:
+				pass
+
+			# Last resort: attempt a cheap call (may execute)
+			try:
+				_ = qnode(*dummy_args)
+				for name in ["tape", "qtape", "_tape", "_qtape"]:
+					cand = getattr(qnode, name, None)
+					if cand is not None and hasattr(cand, "operations") and hasattr(cand, "wires"):
+						return cand
+			except Exception:
+				pass
+
+		except Exception:
+			return None
+
+		return None
 
 	def _get_pennylane_depth_from_ops(self, operations, wires):
 		try:
-			if wires is None:
+			if not wires:
 				return None
 			wire_indices = {w: i for i, w in enumerate(wires)}
 			layers = [0] * len(wires)
 			for op in operations:
 				op_wires = [wire_indices[w] for w in op.wires]
-				max_layer = max(layers[i] for i in op_wires)
+				max_layer = max(layers[i] for i in op_wires) if op_wires else 0
 				for i in op_wires:
 					layers[i] = max_layer + 1
-			return max(layers)
+			return max(layers) if layers else 0
 		except Exception:
 			return None
 
 	def _get_pennylane_gate_counts_from_ops(self, operations):
 		counts = {}
 		for op in operations:
-			counts[op.name] = counts.get(op.name, 0) + 1
+			name = getattr(op, "name", None) or op.__class__.__name__
+			counts[name] = counts.get(name, 0) + 1
 		return counts
 
 	def _count_pennylane_cliffords_from_ops(self, operations):
-		clifford_gates = {'Hadamard', 'PauliX', 'PauliY', 'PauliZ', 'CNOT', 'CZ', 'SWAP', 'S', 'SX', 'SXdg'}
-		return sum(1 for op in operations if op.name in clifford_gates)
+		clifford_gates = {"Hadamard", "PauliX", "PauliY", "PauliZ", "CNOT", "CZ", "SWAP", "S", "SX", "SXdg"}
+		return sum(1 for op in operations if getattr(op, "name", None) in clifford_gates)
 
 	def _count_pennylane_2q_gates_from_ops(self, operations):
-		two_qubit_gates = {'CNOT', 'CZ', 'SWAP'}
-		return sum(1 for op in operations if op.name in two_qubit_gates)
-	
-
-
-
+		two_qubit_gates = {"CNOT", "CZ", "SWAP"}
+		return sum(1 for op in operations if getattr(op, "name", None) in two_qubit_gates)
