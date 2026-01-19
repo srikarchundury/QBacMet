@@ -1,9 +1,9 @@
-from .alg_layer import AlgLayer
-from .transpile_layer import TranspileLayer
-from .backend_layer import BackendLayer
-from .execution_layer import ExecutionLayer
-from .postprocess_layer import PostprocessLayer
-from .slurm_layer import SlurmLayer
+from . import AlgLayer
+from . import TranspileLayer
+from . import BackendLayer
+from . import ExecutionLayer
+from . import PostprocessLayer
+from . import SlurmLayer
 
 import contextlib
 from time import perf_counter
@@ -226,7 +226,3 @@ class QBacMetCollector:
 	def print_metrics(self):
 		import pprint
 		pprint.pprint(self.metrics)
-
-
-# Singleton instance
-collector = QBacMetCollector()

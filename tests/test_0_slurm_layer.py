@@ -1,7 +1,7 @@
-
 import unittest
 import os
-from qbacmetc.slurm_layer import SlurmLayer
+import shutil
+from qbacmetc import SlurmLayer
 
 
 class TestSlurmLayer(unittest.TestCase):
@@ -32,18 +32,21 @@ class TestSlurmLayer(unittest.TestCase):
 		self.assertIsInstance(payload["metrics"], dict)
 		self.assertIsInstance(payload["features"], dict)
 
-		# Metrics keys should exist
-		for k in ["job_id", "partition", "nodelist", "ntasks", "cpus_on_node", "scheduling_policy"]:
+		# Metrics keys should exist (including hostlist)
+		for k in ["job_id", "partition", "nodelist", "ntasks", "cpus_on_node", "scheduling_policy", "hostlist"]:
 			self.assertIn(k, payload["metrics"])
 
-		# Values should match our env (job_id/ntasks/cpus_on_node may be float)
+		# Values should match our env (ints should be parsed as ints now)
 		self.assertEqual(payload["metrics"]["partition"], "debug")
 		self.assertEqual(payload["metrics"]["nodelist"], "node[01-02]")
 		self.assertEqual(payload["metrics"]["scheduling_policy"], "FIFO")
 
-		self.assertIn(payload["metrics"]["job_id"], [12345, 12345.0, "12345"])
-		self.assertIn(payload["metrics"]["ntasks"], [8, 8.0, "8"])
-		self.assertIn(payload["metrics"]["cpus_on_node"], [64, 64.0, "64"])
+		self.assertEqual(payload["metrics"]["job_id"], 12345)
+		self.assertEqual(payload["metrics"]["ntasks"], 8)
+		self.assertEqual(payload["metrics"]["cpus_on_node"], 64)
+
+		# hostlist: for fake node names, it may be None (scontrol cannot expand unknown nodes)
+		self.assertTrue((payload["metrics"]["hostlist"] is None) or isinstance(payload["metrics"]["hostlist"], list))
 
 		# Features should include slurm_version key (may be None)
 		self.assertIn("slurm_version", payload["features"])
@@ -52,16 +55,14 @@ class TestSlurmLayer(unittest.TestCase):
 		# This test only ensures helper methods return gracefully.
 		layer = SlurmLayer()
 
-		# get_partitions/get_nodes may return {"error": "..."} on non-Slurm systems.
 		partitions = layer.get_partitions()
 		nodes = layer.get_nodes()
 
 		self.assertIsInstance(partitions, (dict, list))
 		self.assertIsInstance(nodes, (dict, list))
 
-		# If dict, it should be either error or contain some expected keys
 		if isinstance(partitions, dict):
-			self.assertTrue(("error" in partitions) or ("partitions" in partitions) or (len(partitions.keys()) >= 0))
+			self.assertTrue(("error" in partitions) or (len(partitions.keys()) >= 0))
 
 		if isinstance(nodes, dict):
 			self.assertTrue(("error" in nodes) or (len(nodes.keys()) >= 0))
@@ -78,8 +79,27 @@ class TestSlurmLayer(unittest.TestCase):
 		self.assertIn("metrics", payload)
 		self.assertIn("features", payload)
 
-		for k in ["job_id", "partition", "nodelist", "ntasks", "cpus_on_node", "scheduling_policy"]:
+		for k in ["job_id", "partition", "nodelist", "ntasks", "cpus_on_node", "scheduling_policy", "hostlist"]:
 			self.assertIn(k, payload["metrics"])
+
+		# Not in a job => should be None
+		self.assertIsNone(payload["metrics"]["job_id"])
+
+	def test_frontier_login_sanity(self):
+		# This is a safe "login node sanity" check:
+		# - we do NOT assume we're inside an allocation (SLURM_JOB_ID may be missing)
+		# - but if scontrol exists, slurm_version should be non-empty
+		if shutil.which("scontrol") is None and shutil.which("sinfo") is None:
+			self.skipTest("No slurm commands available on this system")
+
+		layer = SlurmLayer()
+		payload = layer.auto_collect()
+
+		self.assertIn("slurm_version", payload["features"])
+		# Allow None if site blocks commands, but if returned, ensure non-empty string
+		if payload["features"]["slurm_version"] is not None:
+			self.assertIsInstance(payload["features"]["slurm_version"], str)
+			self.assertTrue(len(payload["features"]["slurm_version"].strip()) > 0)
 
 
 if __name__ == "__main__":

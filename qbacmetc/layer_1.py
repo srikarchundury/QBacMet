@@ -9,22 +9,54 @@ class AlgLayer(Layer):
 		super().__init__()
 
 	def auto_collect(self, algo_obj=None, **kwargs):
-		if algo_obj is not None:
-			return self.get_metrics(algo_obj, **kwargs)
+		# Always return standardized payload shape.
+		self.metrics = {}
+		self.features = {}
 
+		# Attach variational metrics even if there's no circuit object.
+		var = self._maybe_variational_payload(**kwargs)
+		if var is not None:
+			self.metrics["variational"] = var
+
+		obj = algo_obj
+		if obj is None:
+			obj = self._find_algo_obj_in_frames()
+
+		if obj is None:
+			return self.get_payload()
+
+		metrics = self.get_metrics(obj, **kwargs)
+		if isinstance(metrics, dict):
+			if "error" in metrics:
+				self.metrics["error"] = metrics.get("error")
+			else:
+				self.metrics.update(metrics)
+
+		return self.get_payload()
+
+	def _find_algo_obj_in_frames(self):
 		frame = inspect.currentframe().f_back
 		while frame:
 			for var in frame.f_locals.values():
 				try:
 					if self._is_qiskit_circuit(var) or self._is_pennylane_obj(var):
-						return self.get_metrics(var, **kwargs)
+						return var
 				except Exception:
 					continue
 			frame = frame.f_back
+		return None
 
-		return {}
+	def _maybe_variational_payload(self, optimizer=None, iterations=None, repetitions=None, classical_time=None, **kwargs):
+		if optimizer is None and iterations is None and repetitions is None and classical_time is None:
+			return None
+		return {
+			"optimizer": optimizer,
+			"iterations": iterations,
+			"repetitions": repetitions,
+			"classical_optimizer_time": classical_time
+		}
 
-	def get_metrics(self, algo_obj, shots=None, optimizer=None, iterations=None, repetitions=None):
+	def get_metrics(self, algo_obj, shots=None, **kwargs):
 		try:
 			if self._is_qiskit_circuit(algo_obj):
 				return self._extract_qiskit_metrics(algo_obj, shots)
@@ -33,14 +65,6 @@ class AlgLayer(Layer):
 		except Exception as e:
 			return {"error": str(e)}
 		return {}
-
-	def get_variational_metrics(self, optimizer=None, iterations=None, repetitions=None, classical_time=None):
-		return {
-			"optimizer": optimizer,
-			"iterations": iterations,
-			"repetitions": repetitions,
-			"classical_optimizer_time": classical_time
-		}
 
 	def _is_qiskit_circuit(self, obj):
 		try:
@@ -76,16 +100,15 @@ class AlgLayer(Layer):
 			"shots": shots
 		}
 
+		# Critical path
 		try:
 			dag = circuit_to_dag(qc)
 			metrics["critical_path_length"] = safe_call(dag, "depth")
-			if hasattr(dag, "connected_components"):
-				metrics["connected_components"] = len(list(dag.connected_components()))
-			else:
-				metrics["connected_components"] = None
 		except Exception:
 			metrics["critical_path_length"] = None
-			metrics["connected_components"] = None
+
+		# Connected components computed from qubit interaction graph
+		metrics["connected_components"] = self._connected_components_from_qiskit_circuit(qc)
 
 		# Heuristic classification (document as such)
 		clifford_gates = {"h", "s", "sdg", "x", "y", "z", "cx", "cz", "swap", "sx", "sxdg"}
@@ -97,6 +120,74 @@ class AlgLayer(Layer):
 
 		return metrics
 
+	def _connected_components_from_qiskit_circuit(self, qc):
+		try:
+			n = getattr(qc, "num_qubits", None)
+			if n is None:
+				return None
+			n = int(n)
+			if n <= 0:
+				return 0
+
+			adj = [set() for _ in range(n)]
+
+			# Qiskit 1.2+: CircuitInstruction with named attributes
+			for ci in getattr(qc, "data", []) or []:
+				try:
+					qargs = getattr(ci, "qubits", None)
+					if not qargs:
+						continue
+
+					# Robust qubit index resolution across Qiskit versions
+					qs = []
+					for q in qargs:
+						try:
+							idx = qc.find_bit(q).index
+						except Exception:
+							# last-ditch fallbacks
+							idx = getattr(q, "index", None)
+							if idx is None:
+								idx = getattr(q, "_index", None)
+							if idx is None:
+								try:
+									idx = list(qc.qubits).index(q)
+								except Exception:
+									idx = None
+						if idx is not None:
+							qs.append(int(idx))
+
+					if len(qs) < 2:
+						continue
+
+					# connect all-to-all within multi-qubit op
+					for i in range(len(qs)):
+						for j in range(i + 1, len(qs)):
+							a = qs[i]
+							b = qs[j]
+							if 0 <= a < n and 0 <= b < n:
+								adj[a].add(b)
+								adj[b].add(a)
+				except Exception:
+					continue
+
+			seen = [False] * n
+			cc = 0
+			for i in range(n):
+				if seen[i]:
+					continue
+				cc += 1
+				stack = [i]
+				seen[i] = True
+				while stack:
+					u = stack.pop()
+					for v in adj[u]:
+						if not seen[v]:
+							seen[v] = True
+							stack.append(v)
+			return cc
+		except Exception:
+			return None
+
 	def _is_pennylane_obj(self, obj):
 		try:
 			import pennylane as qml
@@ -104,16 +195,16 @@ class AlgLayer(Layer):
 		except Exception:
 			return False
 
+	# ---- PennyLane code unchanged from your version below ----
+
 	def _extract_pennylane_metrics(self, obj, shots):
 		import pennylane as qml
 
 		tape = None
 
-		# Case A: already a tape / quantum script-like
 		if hasattr(obj, "operations") and hasattr(obj, "wires"):
 			tape = obj
 
-		# Case B: QNode - try many common attribute names
 		if tape is None and isinstance(obj, qml.QNode):
 			for name in ["tape", "qtape", "_tape", "_qtape", "_tape_cached", "_qscript"]:
 				cand = getattr(obj, name, None)
@@ -121,7 +212,6 @@ class AlgLayer(Layer):
 					tape = cand
 					break
 
-		# Case C: QNode - construct tape without executing (best effort)
 		if tape is None and isinstance(obj, qml.QNode):
 			tape = self._construct_pl_tape_best_effort(obj)
 
@@ -135,15 +225,17 @@ class AlgLayer(Layer):
 		wires = getattr(tape, "wires", None)
 		wire_list = list(wires) if wires is not None else []
 
+		depth = self._get_pennylane_depth_from_ops(operations, wire_list)
+
 		metrics = {
 			"framework": "pennylane",
 			"width": len(wire_list) if wire_list is not None else None,
-			"depth": self._get_pennylane_depth_from_ops(operations, wire_list),
+			"depth": depth,
 			"num_ops": len(operations),
 			"gate_counts": self._get_pennylane_gate_counts_from_ops(operations),
 			"num_parameters": len(tape.get_parameters()) if hasattr(tape, "get_parameters") else None,
 			"shots": shots if shots is not None else getattr(tape, "shots", None),
-			"critical_path_length": self._get_pennylane_depth_from_ops(operations, wire_list),
+			"critical_path_length": depth,
 			"connected_components": None,
 			"num_cliffords": self._count_pennylane_cliffords_from_ops(operations),
 			"num_non_cliffords": len(operations) - self._count_pennylane_cliffords_from_ops(operations),
@@ -152,13 +244,10 @@ class AlgLayer(Layer):
 		return metrics
 
 	def _construct_pl_tape_best_effort(self, qnode):
-		# Try modern helpers first; fall back to older ones if present.
 		try:
 			import pennylane as qml
-			import numpy as np
-
-			# Make dummy args based on signature: fill with 0.0
 			import inspect as _inspect
+
 			sig = _inspect.signature(qnode)
 			dummy_args = []
 			for p in sig.parameters.values():
@@ -169,7 +258,6 @@ class AlgLayer(Layer):
 				else:
 					dummy_args.append(0.0)
 
-			# Try qml.workflow.construct_tape(qnode)(*args)
 			try:
 				construct_tape = getattr(qml.workflow, "construct_tape", None)
 				if construct_tape is not None:
@@ -179,7 +267,6 @@ class AlgLayer(Layer):
 			except Exception:
 				pass
 
-			# Try qml.transforms.make_tape(qnode)(*args)
 			try:
 				make_tape = getattr(qml.transforms, "make_tape", None)
 				if make_tape is not None:
@@ -189,7 +276,6 @@ class AlgLayer(Layer):
 			except Exception:
 				pass
 
-			# Last resort: attempt a cheap call (may execute)
 			try:
 				_ = qnode(*dummy_args)
 				for name in ["tape", "qtape", "_tape", "_qtape"]:

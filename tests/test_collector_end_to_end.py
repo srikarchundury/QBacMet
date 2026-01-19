@@ -9,7 +9,7 @@ class TestEndToEndCollector(unittest.TestCase):
 		from qiskit import transpile
 		from qiskit_aer import AerSimulator
 
-		with collector.collector.collect():
+		with collector.collect():
 			qc = QuantumCircuit(2)
 			qc.h(0)
 			qc.cx(0, 1)
@@ -19,17 +19,17 @@ class TestEndToEndCollector(unittest.TestCase):
 			job = backend.run(tqc, shots=512)
 			_ = job.result()
 
-		metrics = collector.collector.metrics
+		metrics = collector.metrics
 		self.assertIn("algorithm", metrics)
 		self.assertIn("transpile", metrics)
 		self.assertIn("backend", metrics)
 		self.assertIn("execution", metrics)
 		self.assertIn("postprocess", metrics)
 
-		collector.collector.print_metrics()
+		collector.print_metrics()
 
 	def test_pennylane_end_to_end(self):
-		with collector.collector.collect():
+		with collector.collect():
 			dev = qml.device("default.qubit", wires=2)
 
 			@qml.qnode(dev)
@@ -41,14 +41,14 @@ class TestEndToEndCollector(unittest.TestCase):
 
 			circuit(0.5)
 
-		metrics = collector.collector.metrics
+		metrics = collector.metrics
 		self.assertIn("algorithm", metrics)
 		self.assertIn("transpile", metrics)
 		self.assertIn("backend", metrics)
 		self.assertIn("execution", metrics)
 		self.assertIn("postprocess", metrics)
 
-		collector.collector.print_metrics()
+		collector.print_metrics()
 
 
 if __name__ == "__main__":

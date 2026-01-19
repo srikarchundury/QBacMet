@@ -1,5 +1,6 @@
 import unittest
-from qbacmetc.postprocess_layer import PostprocessLayer
+from qbacmetc import PostprocessLayer
+
 
 class TestPostprocessLayer(unittest.TestCase):
 	def test_mitigation_overhead(self):
@@ -19,6 +20,22 @@ class TestPostprocessLayer(unittest.TestCase):
 		marshal_info = {"result_marshalling_time": 0.8}
 		layer.collect_result_marshalling_time(marshal_info)
 		self.assertEqual(layer.metrics["result_marshalling_time"], 0.8)
+
+	def test_auto_collect_fallback(self):
+		# Define local dicts that frame scan can find
+		mit = {"mitigation_overhead": 7.1}
+		qec = {"qec_syndrome_time": 2.4}
+		res = {"result_marshalling_time": 0.55}
+
+		layer = PostprocessLayer()
+		payload = layer.auto_collect()
+
+		m = payload["metrics"]
+
+		self.assertEqual(m["mitigation_overhead"], 7.1)
+		self.assertEqual(m["qec_syndrome_time"], 2.4)
+		self.assertEqual(m["result_marshalling_time"], 0.55)
+
 
 if __name__ == "__main__":
 	unittest.main(verbosity=2)

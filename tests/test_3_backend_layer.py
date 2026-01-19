@@ -1,16 +1,26 @@
 import unittest
-from qbacmetc.backend_layer import BackendLayer
+from qbacmetc import BackendLayer
 
-class DummyTranspileObj:
-	optimization_level = 2
-	error_mitigation = "enabled"
 
 class DummyBackendObj:
 	name = "QiskitAer"
 	version = "0.11.0"
 	max_bond_dim = 16
+	# Make heuristics deterministic
+	__class__ = type("DummyBackendObjClass", (), {"__module__": "qiskit_aer.backends.aerbackend"})
+
 
 class TestBackendLayer(unittest.TestCase):
+	def test_auto_collect_shape(self):
+		layer = BackendLayer()
+		payload = layer.auto_collect()
+
+		self.assertIsInstance(payload, dict)
+		self.assertIn("metrics", payload)
+		self.assertIn("features", payload)
+		self.assertIsInstance(payload["metrics"], dict)
+		self.assertIsInstance(payload["features"], dict)
+
 	def test_set_simulator_features(self):
 		layer = BackendLayer()
 		layer.set_simulator_features(optimization_level=2, error_mitigation="enabled")
@@ -21,8 +31,15 @@ class TestBackendLayer(unittest.TestCase):
 		obj = DummyBackendObj()
 		layer = BackendLayer()
 		layer.set_backend_details(obj)
+
 		self.assertEqual(layer.features["backend_name"], "QiskitAer")
 		self.assertEqual(layer.features["backend_version"], "0.11.0")
+
+		# Heuristic classification (should be simulator given module string)
+		self.assertIn("backend_is_simulator", layer.features)
+		self.assertTrue(layer.features["backend_is_simulator"])
+		self.assertEqual(layer.features.get("backend_type"), "simulator")
+
 		# If you want max_bond_dim tracked, store it as simulator feature:
 		layer.set_simulator_features(max_bond_dim=obj.max_bond_dim)
 		self.assertEqual(layer.features["max_bond_dim"], 16)
@@ -33,6 +50,7 @@ class TestBackendLayer(unittest.TestCase):
 		layer.set_run_dependent_features(run_config)
 		self.assertEqual(layer.features["cost"], 100)
 		self.assertEqual(layer.features["scheduling_policy"], "FIFO")
+
 
 if __name__ == "__main__":
 	unittest.main(verbosity=2)
