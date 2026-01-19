@@ -232,15 +232,13 @@ class QBacMetCollector:
 					prev = 0.0
 				self.execution_layer.metrics["execution_time"] = float(prev) + (t1 - t0)
 
-				# Record algorithm metrics AFTER execution (tape exists)
+				# Record algorithm metrics AFTER execution
 				try:
-					tape = getattr(qnode_self, "tape", None) or getattr(qnode_self, "qtape", None)
-					if tape is not None:
-						self._last_algo_obj = tape
+					self._last_algo_obj = qnode_self
 
-						alg_m = self.alg_layer.get_metrics(tape, shots=None)
-						if isinstance(alg_m, dict) and alg_m:
-							self.alg_layer.metrics = alg_m
+					alg_m = self.alg_layer.get_metrics(qnode_self, shots=None)
+					if isinstance(alg_m, dict) and alg_m:
+						self.alg_layer.metrics = alg_m
 				except Exception:
 					pass
 

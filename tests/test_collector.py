@@ -29,6 +29,7 @@ class TestEndToEndCollector(unittest.TestCase):
 		self.assertEqual(metrics["algorithm"]["metrics"].get("framework"), "qiskit")
 		self.assertIn("hw_circ_width", metrics["transpile"]["metrics"])
 		self.assertIn("execution_time", metrics["execution"]["metrics"])
+		collector.print_metrics()
 
 	def test_pennylane_end_to_end(self):
 		try:
@@ -55,6 +56,7 @@ class TestEndToEndCollector(unittest.TestCase):
 
 		self.assertEqual(metrics["algorithm"]["metrics"].get("framework"), "pennylane")
 		self.assertIn("execution_time", metrics["execution"]["metrics"])
+		collector.print_metrics()
 
 
 if __name__ == "__main__":
