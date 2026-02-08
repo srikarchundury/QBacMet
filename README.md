@@ -1,4 +1,4 @@
-## Quantum Backend Metric Collector
+## Quantum Backend Metric Collector (QBacMet)
 
 QBacMet is a vendor-agnostic metrics/feature "tap" that can be attached
 to any quantum job (simulator or hardware) without having to rewrite experiments.

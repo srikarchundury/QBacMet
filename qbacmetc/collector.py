@@ -28,6 +28,10 @@ class QBacMetCollector:
 		self._orig_qnode_call = None
 		self._wrapped_backend_runs = set()
 
+		# PassManager / preset hooks (for generate_preset_pass_manager(...).run(qc))
+		self._orig_generate_preset_pass_manager = None
+		self._orig_passmanager_run = None
+
 		# Track last seen backend objects for final auto_collect()
 		self._last_qiskit_backend = None
 		self._last_pl_device_or_qnode = None
@@ -209,6 +213,91 @@ class QBacMetCollector:
 		except Exception as e:
 			self.backend_layer.metrics["qiskit_hook_error"] = str(e)
 
+		# -------------------------
+		# Qiskit preset pass manager + PassManager.run hooks
+		# -------------------------
+		try:
+			from qiskit.transpiler import preset_passmanagers as ppm
+			from qiskit.transpiler import passmanager as pm_mod
+
+			# Hook generate_preset_pass_manager so we see optimization_level/target
+			if self._orig_generate_preset_pass_manager is None:
+				self._orig_generate_preset_pass_manager = getattr(ppm, "generate_preset_pass_manager", None)
+
+			def hooked_generate_preset_pass_manager(*args, **kwargs):
+				if (not self.collecting) or (self._orig_generate_preset_pass_manager is None):
+					return self._orig_generate_preset_pass_manager(*args, **kwargs)
+
+				# Capture knobs as features (best-effort, JSON-safe)
+				try:
+					feat = {}
+
+					if "optimization_level" in kwargs:
+						try:
+							feat["optimization_level"] = int(kwargs["optimization_level"])
+						except Exception:
+							feat["optimization_level"] = self._safe_value(kwargs["optimization_level"])
+
+					# Target is important for preset PM
+					if "target" in kwargs and kwargs["target"] is not None:
+						# Avoid serializing the whole target object
+						try:
+							feat["target"] = str(type(kwargs["target"]))
+						except Exception:
+							feat["target"] = self._safe_value(kwargs["target"])
+
+					# Some callers pass backend=...
+					if "backend" in kwargs and kwargs["backend"] is not None:
+						b = kwargs["backend"]
+						self._last_qiskit_backend = b
+						try:
+							self.backend_layer.set_backend_details(b)
+							self._wrap_backend_run(b)
+						except Exception as e:
+							self.backend_layer.metrics["backend_details_error"] = str(e)
+						feat["backend"] = self._safe_value(getattr(b, "name", None) or str(type(b)))
+
+					if feat:
+						self.transpile_layer.set_transpile_features(**feat)
+				except Exception:
+					pass
+
+				return self._orig_generate_preset_pass_manager(*args, **kwargs)
+
+			if self._orig_generate_preset_pass_manager is not None:
+				ppm.generate_preset_pass_manager = hooked_generate_preset_pass_manager
+
+			# Hook PassManager.run to time + collect compiled circuit metrics
+			if self._orig_passmanager_run is None:
+				self._orig_passmanager_run = getattr(pm_mod.PassManager, "run", None)
+
+			def hooked_passmanager_run(pm_self, *args, **kwargs):
+				if (not self.collecting) or (self._orig_passmanager_run is None):
+					return self._orig_passmanager_run(pm_self, *args, **kwargs)
+
+				t0 = perf_counter()
+				out = self._orig_passmanager_run(pm_self, *args, **kwargs)
+				t1 = perf_counter()
+
+				# Treat PassManager.run as transpile_time
+				prev = self.execution_layer.metrics.get("transpile_time", 0.0) or 0.0
+				self.execution_layer.metrics["transpile_time"] = float(prev) + (t1 - t0)
+
+				# Compiled circuit metrics
+				try:
+					hw_circ = out[0] if isinstance(out, (list, tuple)) and out else out
+					self.transpile_layer.set_compiled_circuit_metrics(hw_circ)
+				except Exception:
+					pass
+
+				return out
+
+			if self._orig_passmanager_run is not None:
+				pm_mod.PassManager.run = hooked_passmanager_run
+
+		except Exception as e:
+			self.backend_layer.metrics["passmanager_hook_error"] = str(e)
+
 		# PennyLane QNode hook
 		try:
 			import pennylane as qml
@@ -258,6 +347,18 @@ class QBacMetCollector:
 				qiskit.transpile = self._orig_qiskit_transpile
 			if self._orig_qiskit_compiler_transpile is not None:
 				qiskit.compiler.transpile = self._orig_qiskit_compiler_transpile
+		except Exception:
+			pass
+
+		# Restore preset pass manager / PassManager hooks
+		try:
+			from qiskit.transpiler import preset_passmanagers as ppm
+			from qiskit.transpiler import passmanager as pm_mod
+
+			if self._orig_generate_preset_pass_manager is not None:
+				ppm.generate_preset_pass_manager = self._orig_generate_preset_pass_manager
+			if self._orig_passmanager_run is not None:
+				pm_mod.PassManager.run = self._orig_passmanager_run
 		except Exception:
 			pass
 
