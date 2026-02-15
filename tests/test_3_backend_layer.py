@@ -1,5 +1,5 @@
 import unittest
-from qbacmetc import BackendLayer
+from qbacmet import BackendLayer
 
 
 class DummyBackendObj:

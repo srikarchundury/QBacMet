@@ -1,7 +1,7 @@
 import unittest
 import os
 import shutil
-from qbacmetc import SlurmLayer
+from qbacmet import SlurmLayer
 
 
 class TestSlurmLayer(unittest.TestCase):

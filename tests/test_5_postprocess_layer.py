@@ -1,5 +1,5 @@
 import unittest
-from qbacmetc import PostprocessLayer
+from qbacmet import PostprocessLayer
 
 
 class TestPostprocessLayer(unittest.TestCase):

@@ -4,7 +4,7 @@ import unittest
 class TestEndToEndCollector(unittest.TestCase):
 	def test_qiskit_end_to_end(self):
 		try:
-			from qbacmetc import collector
+			from qbacmet import collector
 			import qiskit
 			from qiskit import QuantumCircuit
 			from qiskit_aer import AerSimulator
@@ -33,7 +33,7 @@ class TestEndToEndCollector(unittest.TestCase):
 
 	def test_pennylane_end_to_end(self):
 		try:
-			from qbacmetc import collector
+			from qbacmet import collector
 			import pennylane as qml
 		except Exception as e:
 			raise unittest.SkipTest(f"PennyLane not available: {e}")

@@ -1,5 +1,5 @@
 import unittest
-from qbacmetc import TranspileLayer
+from qbacmet import TranspileLayer
 
 
 class TestTranspileLayer(unittest.TestCase):

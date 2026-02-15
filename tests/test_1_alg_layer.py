@@ -1,5 +1,5 @@
 import unittest
-from qbacmetc import AlgLayer
+from qbacmet import AlgLayer
 
 
 class TestAlgLayer(unittest.TestCase):

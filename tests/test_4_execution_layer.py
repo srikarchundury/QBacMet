@@ -1,7 +1,7 @@
 import unittest
 import time
 import os
-from qbacmetc import ExecutionLayer
+from qbacmet import ExecutionLayer
 
 
 class TestExecutionLayer(unittest.TestCase):
