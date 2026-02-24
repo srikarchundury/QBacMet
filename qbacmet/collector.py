@@ -1,3 +1,4 @@
+# qbacmet/collector.py
 from .layer_0 import SlurmLayer
 from .layer_1 import AlgLayer
 from .layer_2 import TranspileLayer
@@ -11,7 +12,6 @@ from time import perf_counter
 
 class QBacMetCollector:
 	def __init__(self):
-		self._last_algo_obj = None
 		self.alg_layer = AlgLayer()
 		self.transpile_layer = TranspileLayer()
 		self.backend_layer = BackendLayer()
@@ -22,28 +22,20 @@ class QBacMetCollector:
 		self.collecting = False
 		self.metrics = {}
 
-		# Hook state
-		self._orig_qiskit_transpile = None
-		self._orig_qiskit_compiler_transpile = None
-		self._orig_qnode_call = None
-		self._wrapped_backend_runs = set()
-
-		# PassManager / preset hooks (for generate_preset_pass_manager(...).run(qc))
-		self._orig_generate_preset_pass_manager = None
-		self._orig_passmanager_run = None
-
-		# Track last seen backend objects for final auto_collect()
+		self._last_algo_obj = None
 		self._last_qiskit_backend = None
 		self._last_pl_device_or_qnode = None
+
+		self._wrapped_backend_runs = set()
+		self._patches = []  # [(obj, attr, orig)]
 
 	def start_collecting(self):
-		self._last_algo_obj = None
 		self.collecting = True
 		self.metrics = {}
+		self._last_algo_obj = None
 		self._last_qiskit_backend = None
 		self._last_pl_device_or_qnode = None
 
-		# Reset layers
 		self.alg_layer.reset()
 		self.transpile_layer.reset()
 		self.backend_layer.reset()
@@ -55,32 +47,35 @@ class QBacMetCollector:
 		self.collecting = False
 
 	# -------------------------
-	# Small helpers
+	# Patch helpers
 	# -------------------------
-	def _safe_value(self, v):
-		# Keep features JSON-ish and stable.
-		if v is None:
-			return None
-		if isinstance(v, (bool, int, float, str)):
-			return v
-		if isinstance(v, (list, tuple)):
-			return [self._safe_value(x) for x in v]
-		if isinstance(v, dict):
-			out = {}
-			for k, vv in v.items():
-				try:
-					out[str(k)] = self._safe_value(vv)
-				except Exception:
-					out[str(k)] = str(vv)
-			return out
-		# fallback
+	def _patch_attr(self, obj, attr, new):
 		try:
-			return str(v)
+			orig = getattr(obj, attr)
 		except Exception:
 			return None
+		self._patches.append((obj, attr, orig))
+		try:
+			setattr(obj, attr, new)
+			return orig
+		except Exception:
+			# rollback record if we failed to set
+			try:
+				self._patches.pop()
+			except Exception:
+				pass
+			return None
+
+	def _unpatch_all(self):
+		# restore in reverse order
+		for obj, attr, orig in reversed(self._patches):
+			try:
+				setattr(obj, attr, orig)
+			except Exception:
+				pass
+		self._patches = []
 
 	def _filter_transpile_kwargs(self, kwargs):
-		# Avoid storing large / non-serializable objects. Keep only useful knobs.
 		keep = [
 			"optimization_level",
 			"basis_gates",
@@ -98,43 +93,37 @@ class QBacMetCollector:
 			"target",
 			"shots",
 		]
-
 		out = {}
 		for k in keep:
 			if k in kwargs:
-				out[k] = self._safe_value(kwargs.get(k))
+				out[k] = self.alg_layer.json_safe(kwargs.get(k))
 		return out
 
 	def _wrap_backend_run(self, backend_obj):
-		# Wrap backend.run() once per backend instance (best-effort)
-		if backend_obj is None:
+		if backend_obj is None or not hasattr(backend_obj, "run"):
 			return
 		key = id(backend_obj)
 		if key in self._wrapped_backend_runs:
 			return
-		if not hasattr(backend_obj, "run"):
-			return
 
-		orig_run = backend_obj.run  # bound method
+		orig_run = backend_obj.run
 
 		def wrapped_run(*args, **kwargs):
-			# Do nothing if not actively collecting
 			if not self.collecting:
 				return orig_run(*args, **kwargs)
 
 			self._last_qiskit_backend = backend_obj
-			self.backend_layer.set_backend_details(backend_obj)
+			try:
+				self.backend_layer.set_backend_details(backend_obj)
+			except Exception:
+				pass
 
 			t0 = perf_counter()
 			out = orig_run(*args, **kwargs)
 			t1 = perf_counter()
 
-			# backend.run() is part of execution time
-			prev = self.execution_layer.metrics.get("execution_time", None)
-			if prev is None:
-				prev = 0.0
+			prev = self.execution_layer.metrics.get("execution_time", 0.0) or 0.0
 			self.execution_layer.metrics["execution_time"] = float(prev) + (t1 - t0)
-
 			return out
 
 		try:
@@ -144,187 +133,163 @@ class QBacMetCollector:
 			return
 
 	def _install_hooks(self):
-		# Qiskit transpile hook
+		self._install_qiskit_hooks()
+		self._install_pennylane_hooks()
+		self._install_ibm_runtime_hooks()
+
+	def _install_qiskit_hooks(self):
+		# Hook qiskit.transpile + qiskit.compiler.transpile
 		try:
 			import qiskit
 			import qiskit.compiler
 
-			if self._orig_qiskit_transpile is None:
-				self._orig_qiskit_transpile = getattr(qiskit, "transpile", None)
-			if self._orig_qiskit_compiler_transpile is None:
-				self._orig_qiskit_compiler_transpile = getattr(qiskit.compiler, "transpile", None)
+			orig_qiskit_transpile = getattr(qiskit, "transpile", None)
+			orig_compiler_transpile = getattr(qiskit.compiler, "transpile", None)
 
 			def hooked_transpile(*args, **kwargs):
-				# If not collecting, behave like normal
 				if not self.collecting:
-					if self._orig_qiskit_compiler_transpile is not None:
-						return self._orig_qiskit_compiler_transpile(*args, **kwargs)
-					return self._orig_qiskit_transpile(*args, **kwargs)
+					# preserve original resolution order
+					if orig_compiler_transpile is not None:
+						return orig_compiler_transpile(*args, **kwargs)
+					return orig_qiskit_transpile(*args, **kwargs)
 
-				# Capture transpile knobs as FEATURES (sanitized)
-				self.transpile_layer.set_transpile_features(**self._filter_transpile_kwargs(kwargs))
+				# features (knobs)
+				try:
+					self.transpile_layer.set_transpile_features(**self._filter_transpile_kwargs(kwargs))
+				except Exception:
+					pass
 
-				# Capture algorithm metrics pre-transpile (best effort)
+				# try infer algorithm object (usually qc)
 				if args:
-					cand = args[0]
-					self._last_algo_obj = cand
-
-					alg_m = self.alg_layer.get_metrics(cand, shots=kwargs.get("shots", None))
-					if isinstance(alg_m, dict) and alg_m:
-						self.alg_layer.metrics = alg_m
+					self._last_algo_obj = args[0]
+					try:
+						alg_m = self.alg_layer.get_metrics(self._last_algo_obj, shots=kwargs.get("shots", None))
+						if isinstance(alg_m, dict) and alg_m:
+							self.alg_layer.metrics = alg_m
+					except Exception:
+						pass
 
 				backend = kwargs.get("backend", None)
 				if backend is not None:
 					self._last_qiskit_backend = backend
 					try:
 						self.backend_layer.set_backend_details(backend)
-						self._wrap_backend_run(backend)
-					except Exception as e:
-						self.backend_layer.metrics["backend_details_error"] = str(e)
+					except Exception:
+						pass
+					self._wrap_backend_run(backend)
 
-				# Actually transpile (time it)
 				t0 = perf_counter()
-				if self._orig_qiskit_compiler_transpile is not None:
-					out = self._orig_qiskit_compiler_transpile(*args, **kwargs)
-				else:
-					out = self._orig_qiskit_transpile(*args, **kwargs)
+				out = (orig_compiler_transpile or orig_qiskit_transpile)(*args, **kwargs)
 				t1 = perf_counter()
 
-				prev = self.execution_layer.metrics.get("transpile_time", None)
-				if prev is None:
-					prev = 0.0
+				prev = self.execution_layer.metrics.get("transpile_time", 0.0) or 0.0
 				self.execution_layer.metrics["transpile_time"] = float(prev) + (t1 - t0)
 
-				# Capture compiled circuit metrics
+				# compiled circuit metrics (first element if list)
 				try:
-					hw_circ = out[0] if isinstance(out, (list, tuple)) and out else out
-					self.transpile_layer.set_compiled_circuit_metrics(hw_circ)
+					hw = out[0] if isinstance(out, (list, tuple)) and out else out
+					self.transpile_layer.set_compiled_circuit_metrics(hw)
 				except Exception:
 					pass
 
 				return out
 
-			# Patch both common entry points
-			if self._orig_qiskit_transpile is not None:
-				qiskit.transpile = hooked_transpile
-			if self._orig_qiskit_compiler_transpile is not None:
-				qiskit.compiler.transpile = hooked_transpile
+			if orig_qiskit_transpile is not None:
+				self._patch_attr(qiskit, "transpile", hooked_transpile)
+			if orig_compiler_transpile is not None:
+				self._patch_attr(qiskit.compiler, "transpile", hooked_transpile)
 
 		except Exception as e:
 			self.backend_layer.metrics["qiskit_hook_error"] = str(e)
 
-		# -------------------------
-		# Qiskit preset pass manager + PassManager.run hooks
-		# -------------------------
+		# Hook preset pass manager generator + PassManager.run (covers generate_preset_pass_manager(...).run(qc))
 		try:
 			from qiskit.transpiler import preset_passmanagers as ppm
 			from qiskit.transpiler import passmanager as pm_mod
 
-			# Hook generate_preset_pass_manager so we see optimization_level/target
-			if self._orig_generate_preset_pass_manager is None:
-				self._orig_generate_preset_pass_manager = getattr(ppm, "generate_preset_pass_manager", None)
+			orig_gen = getattr(ppm, "generate_preset_pass_manager", None)
+			if orig_gen is not None:
+				def hooked_generate_preset_pass_manager(*args, **kwargs):
+					if not self.collecting:
+						return orig_gen(*args, **kwargs)
 
-			def hooked_generate_preset_pass_manager(*args, **kwargs):
-				if (not self.collecting) or (self._orig_generate_preset_pass_manager is None):
-					return self._orig_generate_preset_pass_manager(*args, **kwargs)
-
-				# Capture knobs as features (best-effort, JSON-safe)
-				try:
 					feat = {}
-
 					if "optimization_level" in kwargs:
-						try:
-							feat["optimization_level"] = int(kwargs["optimization_level"])
-						except Exception:
-							feat["optimization_level"] = self._safe_value(kwargs["optimization_level"])
-
-					# Target is important for preset PM
+						feat["optimization_level"] = self.alg_layer.json_safe(kwargs.get("optimization_level"))
 					if "target" in kwargs and kwargs["target"] is not None:
-						# Avoid serializing the whole target object
 						try:
 							feat["target"] = str(type(kwargs["target"]))
 						except Exception:
-							feat["target"] = self._safe_value(kwargs["target"])
-
-					# Some callers pass backend=...
+							feat["target"] = self.alg_layer.json_safe(kwargs["target"])
 					if "backend" in kwargs and kwargs["backend"] is not None:
 						b = kwargs["backend"]
 						self._last_qiskit_backend = b
 						try:
 							self.backend_layer.set_backend_details(b)
-							self._wrap_backend_run(b)
-						except Exception as e:
-							self.backend_layer.metrics["backend_details_error"] = str(e)
-						feat["backend"] = self._safe_value(getattr(b, "name", None) or str(type(b)))
+						except Exception:
+							pass
+						self._wrap_backend_run(b)
+						feat["backend"] = self.alg_layer.json_safe(getattr(b, "name", None) or str(type(b)))
 
 					if feat:
-						self.transpile_layer.set_transpile_features(**feat)
-				except Exception:
-					pass
+						try:
+							self.transpile_layer.set_transpile_features(**feat)
+						except Exception:
+							pass
 
-				return self._orig_generate_preset_pass_manager(*args, **kwargs)
+					return orig_gen(*args, **kwargs)
 
-			if self._orig_generate_preset_pass_manager is not None:
-				ppm.generate_preset_pass_manager = hooked_generate_preset_pass_manager
+				self._patch_attr(ppm, "generate_preset_pass_manager", hooked_generate_preset_pass_manager)
 
-			# Hook PassManager.run to time + collect compiled circuit metrics
-			if self._orig_passmanager_run is None:
-				self._orig_passmanager_run = getattr(pm_mod.PassManager, "run", None)
+			orig_pm_run = getattr(pm_mod.PassManager, "run", None)
+			if orig_pm_run is not None:
+				def hooked_pm_run(pm_self, *args, **kwargs):
+					if not self.collecting:
+						return orig_pm_run(pm_self, *args, **kwargs)
 
-			def hooked_passmanager_run(pm_self, *args, **kwargs):
-				if (not self.collecting) or (self._orig_passmanager_run is None):
-					return self._orig_passmanager_run(pm_self, *args, **kwargs)
+					t0 = perf_counter()
+					out = orig_pm_run(pm_self, *args, **kwargs)
+					t1 = perf_counter()
 
-				t0 = perf_counter()
-				out = self._orig_passmanager_run(pm_self, *args, **kwargs)
-				t1 = perf_counter()
+					prev = self.execution_layer.metrics.get("transpile_time", 0.0) or 0.0
+					self.execution_layer.metrics["transpile_time"] = float(prev) + (t1 - t0)
 
-				# Treat PassManager.run as transpile_time
-				prev = self.execution_layer.metrics.get("transpile_time", 0.0) or 0.0
-				self.execution_layer.metrics["transpile_time"] = float(prev) + (t1 - t0)
+					try:
+						hw = out[0] if isinstance(out, (list, tuple)) and out else out
+						self.transpile_layer.set_compiled_circuit_metrics(hw)
+					except Exception:
+						pass
+					return out
 
-				# Compiled circuit metrics
-				try:
-					hw_circ = out[0] if isinstance(out, (list, tuple)) and out else out
-					self.transpile_layer.set_compiled_circuit_metrics(hw_circ)
-				except Exception:
-					pass
-
-				return out
-
-			if self._orig_passmanager_run is not None:
-				pm_mod.PassManager.run = hooked_passmanager_run
+				self._patch_attr(pm_mod.PassManager, "run", hooked_pm_run)
 
 		except Exception as e:
 			self.backend_layer.metrics["passmanager_hook_error"] = str(e)
 
-		# PennyLane QNode hook
+	def _install_pennylane_hooks(self):
 		try:
 			import pennylane as qml
 
-			if self._orig_qnode_call is None:
-				self._orig_qnode_call = qml.QNode.__call__
+			orig_call = getattr(qml.QNode, "__call__", None)
+			if orig_call is None:
+				return
 
 			def hooked_qnode_call(qnode_self, *args, **kwargs):
 				if not self.collecting:
-					return self._orig_qnode_call(qnode_self, *args, **kwargs)
+					return orig_call(qnode_self, *args, **kwargs)
 
-				# Track backend-ish object for Layer-3 inference
 				self._last_pl_device_or_qnode = qnode_self
 
 				t0 = perf_counter()
-				out = self._orig_qnode_call(qnode_self, *args, **kwargs)
+				out = orig_call(qnode_self, *args, **kwargs)
 				t1 = perf_counter()
 
-				prev = self.execution_layer.metrics.get("execution_time", None)
-				if prev is None:
-					prev = 0.0
+				prev = self.execution_layer.metrics.get("execution_time", 0.0) or 0.0
 				self.execution_layer.metrics["execution_time"] = float(prev) + (t1 - t0)
 
-				# Record algorithm metrics AFTER execution
+				# post execution alg metrics
+				self._last_algo_obj = qnode_self
 				try:
-					self._last_algo_obj = qnode_self
-
 					alg_m = self.alg_layer.get_metrics(qnode_self, shots=None)
 					if isinstance(alg_m, dict) and alg_m:
 						self.alg_layer.metrics = alg_m
@@ -333,47 +298,70 @@ class QBacMetCollector:
 
 				return out
 
-			qml.QNode.__call__ = hooked_qnode_call
+			self._patch_attr(qml.QNode, "__call__", hooked_qnode_call)
+
+		except Exception:
+			pass
+
+	def _install_ibm_runtime_hooks(self):
+		# Hook SamplerV2/EstimatorV2 .run (timing + backend inference if possible)
+		try:
+			from qiskit_ibm_runtime import SamplerV2 as _SamplerV2
+			from qiskit_ibm_runtime import EstimatorV2 as _EstimatorV2
+
+			orig_sampler_run = getattr(_SamplerV2, "run", None)
+			orig_estimator_run = getattr(_EstimatorV2, "run", None)
+
+			def wrap_prim_run(orig_run):
+				if orig_run is None:
+					return None
+
+				def wrapped_run(prim_self, *args, **kwargs):
+					if not self.collecting:
+						return orig_run(prim_self, *args, **kwargs)
+
+					# best-effort: try infer a backend-like object off the primitive
+					try:
+						for attr in ["backend", "_backend", "mode", "_mode"]:
+							b = getattr(prim_self, attr, None)
+							if b is not None:
+								self._last_qiskit_backend = b
+								try:
+									self.backend_layer.set_backend_details(b)
+								except Exception:
+									pass
+								break
+					except Exception:
+						pass
+
+					t0 = perf_counter()
+					out = orig_run(prim_self, *args, **kwargs)
+					t1 = perf_counter()
+
+					prev = self.execution_layer.metrics.get("execution_time", 0.0) or 0.0
+					self.execution_layer.metrics["execution_time"] = float(prev) + (t1 - t0)
+					return out
+
+				return wrapped_run
+
+			w1 = wrap_prim_run(orig_sampler_run)
+			if w1 is not None:
+				self._patch_attr(_SamplerV2, "run", w1)
+
+			w2 = wrap_prim_run(orig_estimator_run)
+			if w2 is not None:
+				self._patch_attr(_EstimatorV2, "run", w2)
 
 		except Exception:
 			pass
 
 	def _remove_hooks(self):
-		# Restore Qiskit hooks
-		try:
-			import qiskit
-			import qiskit.compiler
-			if self._orig_qiskit_transpile is not None:
-				qiskit.transpile = self._orig_qiskit_transpile
-			if self._orig_qiskit_compiler_transpile is not None:
-				qiskit.compiler.transpile = self._orig_qiskit_compiler_transpile
-		except Exception:
-			pass
-
-		# Restore preset pass manager / PassManager hooks
-		try:
-			from qiskit.transpiler import preset_passmanagers as ppm
-			from qiskit.transpiler import passmanager as pm_mod
-
-			if self._orig_generate_preset_pass_manager is not None:
-				ppm.generate_preset_pass_manager = self._orig_generate_preset_pass_manager
-			if self._orig_passmanager_run is not None:
-				pm_mod.PassManager.run = self._orig_passmanager_run
-		except Exception:
-			pass
-
-		# Restore PennyLane hook
-		try:
-			import pennylane as qml
-			if self._orig_qnode_call is not None:
-				qml.QNode.__call__ = self._orig_qnode_call
-		except Exception:
-			pass
+		self._unpatch_all()
 
 	def auto_collect_all(self):
-		# Always include all layers (even if empty) for stable schema
 		self.metrics["slurm"] = self.slurm_layer.auto_collect()
-		# Final best-effort alg collection (hooks can miss if user imported transpile early)
+
+		# best-effort final algorithm capture
 		if (not isinstance(self.alg_layer.metrics, dict)) or (self.alg_layer.metrics.get("framework") is None):
 			if self._last_algo_obj is not None:
 				try:
@@ -383,10 +371,8 @@ class QBacMetCollector:
 				except Exception:
 					pass
 		self.metrics["algorithm"] = self.alg_layer.get_payload()
-
 		self.metrics["transpile"] = self.transpile_layer.auto_collect()
 
-		# Important: call backend auto_collect with the last seen backend object
 		backend_obj = self._last_qiskit_backend if self._last_qiskit_backend is not None else self._last_pl_device_or_qnode
 		self.metrics["backend"] = self.backend_layer.auto_collect(backend_obj) if backend_obj is not None else self.backend_layer.auto_collect()
 

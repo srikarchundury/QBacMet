@@ -3,3 +3,4 @@ build/
 qbacmet.egg-info/
 qbacmetc/__pycache__/
 tests/__pycache__/
+benchmarks/*.yaml
