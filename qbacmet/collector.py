@@ -46,6 +46,18 @@ class QBacMetCollector:
 	def stop_collecting(self):
 		self.collecting = False
 
+	def set_algorithm_object(self, obj, shots=None):
+		"""Allow caller to explicitly mark the algorithm object."""
+		if not self.collecting:
+			return
+		self._last_algo_obj = obj
+		try:
+			alg_m = self.alg_layer.get_metrics(obj, shots=shots)
+			if isinstance(alg_m, dict) and alg_m:
+				self.alg_layer.metrics = alg_m
+		except Exception:
+			pass
+
 	# -------------------------
 	# Patch helpers
 	# -------------------------
