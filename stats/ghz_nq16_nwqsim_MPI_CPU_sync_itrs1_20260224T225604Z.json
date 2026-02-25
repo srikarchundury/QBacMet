@@ -1,0 +1,229 @@
+{
+  "args": {
+    "benchmark_name": "ghz",
+    "number_of_qubits": 16,
+    "simulator_type": "nwqsim",
+    "sub_backend": "MPI",
+    "device": "CPU",
+    "run_mode": "sync",
+    "number_of_iterations": 1
+  },
+  "timestamp": "2026-02-24T22:56:04.117961Z",
+  "layers": {
+    "layer_0_slurm": {
+      "features": {
+        "in_slurm_job": true,
+        "frontend_step_id": "1",
+        "qfw_step_id": null,
+        "time_limit": "02:00:00",
+        "qos": "normal",
+        "frontend_job_name": "ghz_16",
+        "qfw_job_name": null,
+        "frontend_cluster_name": "borg",
+        "qfw_cluster_name": null,
+        "slurm_version": "slurm 24.11.5",
+        "tres": null,
+        "user": "schundu3",
+        "frontend_submit_dir": "/lustre/orion/gen008/proj-shared/qhpc/srikar/qfw_related/QFw/examples",
+        "qfw_submit_dir": null,
+        "account": "gen008_borg"
+      },
+      "metrics": {
+        "num_cpus": 112,
+        "frontend_ntasks": 1,
+        "qfw_ntasks": null,
+        "frontend_job_id": 575654,
+        "qfw_job_id": 575655,
+        "scheduling_policy": null,
+        "num_nodes": 1,
+        "frontend_partition": "batch",
+        "qfw_partition": null,
+        "frontend_nodelist": "borg034",
+        "qfw_nodelist": null,
+        "num_tasks": 1,
+        "frontend_cpus_on_node": 112,
+        "qfw_cpus_on_node": null
+      }
+    },
+    "layer_1_algorithm": {
+      "features": {},
+      "metrics": {
+        "gate_counts": {
+          "measure": 16,
+          "cx": 15,
+          "h": 1
+        },
+        "num_non_cliffords": 16,
+        "num_cliffords": 16,
+        "connected_components": 1,
+        "num_2q_gates": 15,
+        "framework": "qiskit",
+        "num_parameters": 0,
+        "shots": null,
+        "num_ops": 32,
+        "depth": 17,
+        "width": 16,
+        "critical_path_length": 17,
+        "num_clbits": 16
+      }
+    },
+    "layer_2_transpile": {
+      "features": {},
+      "metrics": {}
+    },
+    "layer_3_backend": {
+      "features": {
+        "env_backend": null
+      },
+      "metrics": {}
+    },
+    "layer_4_execution": {
+      "features": {},
+      "metrics": {
+        "mpi_size": 1,
+        "frontend_hostlist": "borg034",
+        "qfw_hostlist": null,
+        "mpi_rank": 0,
+        "openmp_num_threads": 1,
+        "frontend_hpc_job_id": "575654",
+        "qfw_hpc_job_id": "575655"
+      }
+    },
+    "layer_5_postprocess": {
+      "features": {},
+      "metrics": {}
+    }
+  },
+  "raw_sources": {
+    "frontend": {
+      "slurm": {
+        "metrics": {
+          "job_id": 575654,
+          "partition": "batch",
+          "nodelist": "borg034",
+          "ntasks": 1,
+          "cpus_on_node": 112,
+          "scheduling_policy": null,
+          "num_nodes": 1,
+          "num_cpus": 112,
+          "num_tasks": 1
+        },
+        "features": {
+          "in_slurm_job": true,
+          "slurm_version": "slurm 24.11.5",
+          "cluster_name": "borg",
+          "job_name": "ghz_16",
+          "submit_dir": "/lustre/orion/gen008/proj-shared/qhpc/srikar/qfw_related/QFw/examples",
+          "user": "schundu3",
+          "step_id": "1",
+          "account": "gen008_borg",
+          "qos": "normal",
+          "time_limit": "02:00:00",
+          "tres": null
+        }
+      },
+      "algorithm": {
+        "metrics": {
+          "framework": "qiskit",
+          "width": 16,
+          "depth": 17,
+          "num_clbits": 16,
+          "num_ops": 32,
+          "gate_counts": {
+            "measure": 16,
+            "cx": 15,
+            "h": 1
+          },
+          "num_parameters": 0,
+          "shots": null,
+          "critical_path_length": 17,
+          "connected_components": 1,
+          "num_cliffords": 16,
+          "num_non_cliffords": 16,
+          "num_2q_gates": 15
+        },
+        "features": {}
+      },
+      "transpile": {
+        "metrics": {},
+        "features": {}
+      },
+      "backend": {
+        "metrics": {},
+        "features": {
+          "env_backend": null
+        }
+      },
+      "execution": {
+        "metrics": {
+          "openmp_num_threads": 1,
+          "mpi_rank": 0,
+          "mpi_size": 1,
+          "hpc_job_id": "575654",
+          "hostlist": "borg034"
+        },
+        "features": {}
+      },
+      "postprocess": {
+        "metrics": {},
+        "features": {}
+      }
+    },
+    "qfw": {
+      "algorithm": {
+        "features": {},
+        "metrics": {}
+      },
+      "backend": {
+        "features": {
+          "env_backend": null
+        },
+        "metrics": {}
+      },
+      "execution": {
+        "features": {},
+        "metrics": {
+          "hostlist": null,
+          "hpc_job_id": "575655",
+          "mpi_rank": 0,
+          "mpi_size": 1,
+          "openmp_num_threads": 1
+        }
+      },
+      "postprocess": {
+        "features": {},
+        "metrics": {}
+      },
+      "slurm": {
+        "features": {
+          "account": "gen008_borg",
+          "cluster_name": null,
+          "in_slurm_job": true,
+          "job_name": null,
+          "qos": "normal",
+          "slurm_version": "slurm 24.11.5",
+          "step_id": null,
+          "submit_dir": null,
+          "time_limit": "02:00:00",
+          "tres": null,
+          "user": "schundu3"
+        },
+        "metrics": {
+          "cpus_on_node": null,
+          "job_id": 575655,
+          "nodelist": null,
+          "ntasks": null,
+          "num_cpus": 112,
+          "num_nodes": 1,
+          "num_tasks": 1,
+          "partition": null,
+          "scheduling_policy": null
+        }
+      },
+      "transpile": {
+        "features": {},
+        "metrics": {}
+      }
+    }
+  }
+}
