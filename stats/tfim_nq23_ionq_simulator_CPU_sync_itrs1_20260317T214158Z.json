@@ -1,0 +1,288 @@
+{
+  "args": {
+    "benchmark_name": "tfim",
+    "number_of_qubits": 23,
+    "simulator_type": "ionq",
+    "sub_backend": "simulator",
+    "device": "CPU",
+    "run_mode": "sync",
+    "number_of_iterations": 1
+  },
+  "timestamp": "2026-03-17T21:41:58.610127Z",
+  "layers": {
+    "layer_0_slurm": {
+      "features": {
+        "slurm_version": "slurm 24.11.5",
+        "frontend_submit_dir": "/lustre/orion/gen008/proj-shared/qhpc/srikar/qfw_related/QFw/examples",
+        "qfw_submit_dir": null,
+        "time_limit": "02:00:00",
+        "account": "gen008_borg",
+        "user": "schundu3",
+        "frontend_job_name": "tfim_23",
+        "qfw_job_name": null,
+        "qos": "normal",
+        "tres": null,
+        "frontend_cluster_name": "borg",
+        "qfw_cluster_name": null,
+        "frontend_step_id": "1",
+        "qfw_step_id": null,
+        "in_slurm_job": true
+      },
+      "metrics": {
+        "frontend_ntasks": 1,
+        "qfw_ntasks": null,
+        "frontend_job_id": 578016,
+        "qfw_job_id": 578017,
+        "num_nodes": 1,
+        "num_tasks": 1,
+        "frontend_nodelist": "borg058",
+        "qfw_nodelist": null,
+        "frontend_cpus_on_node": 112,
+        "qfw_cpus_on_node": null,
+        "num_cpus": 112,
+        "scheduling_policy": null,
+        "frontend_partition": "batch",
+        "qfw_partition": null
+      }
+    },
+    "layer_1_algorithm": {
+      "features": {},
+      "metrics": {
+        "width": 23,
+        "depth": 71,
+        "connected_components": 1,
+        "num_2q_gates": 46,
+        "num_qubits": 23,
+        "num_parameters": 0,
+        "frontend_shots": null,
+        "qfw_shots": 1024,
+        "gate_counts": {
+          "cx": 46,
+          "rx": 23,
+          "rz": 23,
+          "measure": 23
+        },
+        "critical_path_length": 71,
+        "num_cliffords": 46,
+        "num_ops": 115,
+        "num_non_cliffords": 69,
+        "num_clbits": 23,
+        "framework": "qiskit"
+      }
+    },
+    "layer_2_transpile": {
+      "features": {
+        "optimization_level": 1,
+        "target": "<class 'NoneType'>"
+      },
+      "metrics": {
+        "hw_circ_connectivity_degree_avg": 2.0,
+        "hw_circ_num_ops": 115,
+        "hw_circ_connected_components": 1,
+        "hw_circ_num_2q_gates": 46,
+        "hw_circ_gate_counts": {
+          "cx": 46,
+          "measure": 23,
+          "rx": 23,
+          "rz": 23
+        },
+        "hw_circ_depth": 71,
+        "hw_circ_swaps": 0,
+        "hw_circ_connectivity_degree_max": 2,
+        "hw_circ_width": 23
+      }
+    },
+    "layer_3_backend": {
+      "features": {
+        "backend_is_simulator": true,
+        "backend_module": "qiskit_ionq.ionq_backend",
+        "backend_version": 1,
+        "env_backend": null,
+        "backend_type": "simulator",
+        "backend_name": "ionq_simulator"
+      },
+      "metrics": {}
+    },
+    "layer_4_execution": {
+      "features": {},
+      "metrics": {
+        "openmp_num_threads": 1,
+        "transpile_time": 0.7943580150604248,
+        "mpi_rank": 0,
+        "mpi_size": 1,
+        "frontend_hpc_job_id": "578016",
+        "qfw_hpc_job_id": "578017",
+        "submit_time": 0.21202997211366892,
+        "frontend_hostlist": "borg058",
+        "qfw_hostlist": null
+      }
+    },
+    "layer_5_postprocess": {
+      "features": {},
+      "metrics": {}
+    }
+  },
+  "raw_sources": {
+    "frontend": {
+      "slurm": {
+        "metrics": {
+          "job_id": 578016,
+          "partition": "batch",
+          "nodelist": "borg058",
+          "ntasks": 1,
+          "cpus_on_node": 112,
+          "scheduling_policy": null,
+          "num_nodes": 1,
+          "num_cpus": 112,
+          "num_tasks": 1
+        },
+        "features": {
+          "in_slurm_job": true,
+          "slurm_version": "slurm 24.11.5",
+          "cluster_name": "borg",
+          "job_name": "tfim_23",
+          "submit_dir": "/lustre/orion/gen008/proj-shared/qhpc/srikar/qfw_related/QFw/examples",
+          "user": "schundu3",
+          "step_id": "1",
+          "account": "gen008_borg",
+          "qos": "normal",
+          "time_limit": "02:00:00",
+          "tres": null
+        }
+      },
+      "algorithm": {
+        "metrics": {
+          "framework": "qiskit",
+          "width": 23,
+          "depth": 71,
+          "num_clbits": 23,
+          "num_ops": 115,
+          "gate_counts": {
+            "cx": 46,
+            "rx": 23,
+            "rz": 23,
+            "measure": 23
+          },
+          "num_parameters": 0,
+          "shots": null,
+          "critical_path_length": 71,
+          "connected_components": 1,
+          "num_cliffords": 46,
+          "num_non_cliffords": 69,
+          "num_2q_gates": 46
+        },
+        "features": {}
+      },
+      "transpile": {
+        "metrics": {},
+        "features": {}
+      },
+      "backend": {
+        "metrics": {},
+        "features": {
+          "env_backend": null
+        }
+      },
+      "execution": {
+        "metrics": {
+          "openmp_num_threads": 1,
+          "mpi_rank": 0,
+          "mpi_size": 1,
+          "hpc_job_id": "578016",
+          "hostlist": "borg058"
+        },
+        "features": {}
+      },
+      "postprocess": {
+        "metrics": {},
+        "features": {}
+      }
+    },
+    "qfw": {
+      "algorithm": {
+        "features": {},
+        "metrics": {
+          "framework": "qiskit",
+          "num_clbits": 23,
+          "num_qubits": 23,
+          "shots": 1024
+        }
+      },
+      "backend": {
+        "features": {
+          "backend_is_simulator": true,
+          "backend_module": "qiskit_ionq.ionq_backend",
+          "backend_name": "ionq_simulator",
+          "backend_type": "simulator",
+          "backend_version": 1,
+          "env_backend": null
+        },
+        "metrics": {}
+      },
+      "execution": {
+        "features": {},
+        "metrics": {
+          "hostlist": null,
+          "hpc_job_id": "578017",
+          "mpi_rank": 0,
+          "mpi_size": 1,
+          "openmp_num_threads": 1,
+          "submit_time": 0.21202997211366892,
+          "transpile_time": 0.7943580150604248
+        }
+      },
+      "postprocess": {
+        "features": {},
+        "metrics": {}
+      },
+      "slurm": {
+        "features": {
+          "account": "gen008_borg",
+          "cluster_name": null,
+          "in_slurm_job": true,
+          "job_name": null,
+          "qos": "normal",
+          "slurm_version": "slurm 24.11.5",
+          "step_id": null,
+          "submit_dir": null,
+          "time_limit": "02:00:00",
+          "tres": null,
+          "user": "schundu3"
+        },
+        "metrics": {
+          "cpus_on_node": null,
+          "job_id": 578017,
+          "nodelist": null,
+          "ntasks": null,
+          "num_cpus": 112,
+          "num_nodes": 1,
+          "num_tasks": 1,
+          "partition": null,
+          "scheduling_policy": null
+        }
+      },
+      "transpile": {
+        "features": {
+          "optimization_level": 1,
+          "target": "<class 'NoneType'>"
+        },
+        "metrics": {
+          "hw_circ_connected_components": 1,
+          "hw_circ_connectivity_degree_avg": 2.0,
+          "hw_circ_connectivity_degree_max": 2,
+          "hw_circ_depth": 71,
+          "hw_circ_gate_counts": {
+            "cx": 46,
+            "measure": 23,
+            "rx": 23,
+            "rz": 23
+          },
+          "hw_circ_num_2q_gates": 46,
+          "hw_circ_num_ops": 115,
+          "hw_circ_swaps": 0,
+          "hw_circ_width": 23
+        }
+      }
+    }
+  }
+}
