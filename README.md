@@ -1,7 +1,13 @@
-## Quantum Backend Metric Collector (QBacMet)
+# QBacMet
 
-QBacMet is a vendor-agnostic metrics/feature "tap" that can be attached
-to any quantum job (simulator or hardware) without having to rewrite experiments.
+QBacMet (Quantum Backend Metric Collector) is a vendor-agnostic metrics/feature "tap" that can be attached to any quantum job (simulator or hardware) without having to rewrite experiments. It is one half of **SeleQtor**, feeding the metrics and features that [MQBac](https://github.com/srikarchundury/MQBac) uses for backend selection and runtime estimation.
+
+[![IEEE QCE 2026](https://img.shields.io/badge/IEEE%20QCE%20'26-SeleQtor-lightgrey.svg)]()
+*(paper link will appear at IEEE Xplore once published)*
+
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+## Concepts
 
 We define a **feature** as a configurable or descriptive property such as backend identity,
 simulation method, max bond dimension for tensor networks, etc.
@@ -15,7 +21,7 @@ so strict separation is not always possible.
 
 QBacMet makes it easy to collect both metrics and features across the layers of a Q-HPC workflow.
 
-#### Layers in a Q-HPC Workflow
+## Layers in a Q-HPC Workflow
 
 ---
 
@@ -34,7 +40,7 @@ frameworks such as QFw or native runtime layers.
 ---
 
 ### Layer-1 (Algorithm Metrics)
-This layer answers **“what are we executing?”** independent of hardware.
+This layer answers **"what are we executing?"** independent of hardware.
 Metrics are extracted directly from the algorithm representation.
 
 Two kinds of workloads are supported: **non-variational** and **variational**.
@@ -120,3 +126,35 @@ This layer captures costs incurred **after execution**.
 &emsp; &emsp; 42. mitigation overhead time  
 &emsp; &emsp; 43. QEC syndrome extraction time (if applicable)  
 &emsp; &emsp; 44. result marshalling / formatting time  
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/srikarchundury/QBacMet.git
+cd QBacMet
+pip install -e .
+```
+
+## Related Tools
+
+- [MQBac](https://github.com/srikarchundury/MQBac) — consumes the metrics/features collected by QBacMet to auto-select a QPM backend and estimate circuit runtime.
+
+## Citation
+
+If you use QBacMet in your research, please cite:
+
+```bibtex
+@inproceedings{chundury2026seleqtor,
+    author = {Chundury, Srikar and Kim, Seongmin and Gopalakrishnan Meena, Muralikrishnan and Lu, Chao and Suh, In-Saeng and Mueller, Frank},
+    title = {SeleQtor: Intelligent Quantum Backend Selection and Runtime Estimation},
+    year = {2026},
+    booktitle = {IEEE International Conference on Quantum Computing and Engineering (QCE '26)},
+    note = {To appear}
+}
+```
+
+## License
+
+QBacMet is licensed under the [Apache License, Version 2.0](LICENSE).
