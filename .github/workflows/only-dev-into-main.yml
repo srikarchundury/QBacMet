@@ -1,0 +1,16 @@
+name: enforce-dev-into-main
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block PRs into main unless from dev
+        run: |
+          echo "Base: ${{ github.base_ref }} | Head: ${{ github.head_ref }}"
+          if [ "${{ github.base_ref }}" = "main" ] && [ "${{ github.head_ref }}" != "dev" ]; then
+            echo "Only PRs from 'dev' can be merged into 'main'."
+            exit 1
+          fi
+          echo "Valid PR: from 'dev' to 'main'"

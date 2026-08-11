@@ -5,7 +5,7 @@ QBacMet (Quantum Backend Metric Collector) is a vendor-agnostic metrics/feature 
 [![IEEE QCE 2026](https://img.shields.io/badge/IEEE%20QCE%20'26-SeleQtor-lightgrey.svg)]()
 *(paper link will appear at IEEE Xplore once published)*
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](LICENSE)
 
 ## Concepts
 
@@ -157,4 +157,4 @@ If you use QBacMet in your research, please cite:
 
 ## License
 
-QBacMet is licensed under the [Apache License, Version 2.0](LICENSE).
+QBacMet is licensed under the [BSD 3-Clause License](LICENSE).
