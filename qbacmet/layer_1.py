@@ -28,6 +28,18 @@ class AlgLayer(Layer):
 
 		return self.get_payload()
 
+	def merge_metrics(self, new):
+		"""Update with a fresh measurement without replacing known values by None (e.g. shots set by the
+		caller before transpile, when the transpile call itself carries no shots)."""
+		if not isinstance(new, dict) or not new:
+			return
+		if not isinstance(self.metrics, dict):
+			self.metrics = {}
+		for k, v in new.items():
+			if v is None and self.metrics.get(k) is not None:
+				continue
+			self.metrics[k] = v
+
 	def _variational_payload(self, optimizer=None, iterations=None, repetitions=None, classical_time=None, **kwargs):
 		if optimizer is None and iterations is None and repetitions is None and classical_time is None:
 			return None
@@ -89,7 +101,7 @@ class AlgLayer(Layer):
 
 		cliff = {"h", "s", "sdg", "x", "y", "z", "cx", "cz", "swap", "sx", "sxdg"}
 		num_cliff = sum(int(gc.get(g, 0) or 0) for g in cliff)
-		num_2q = sum(int(gc.get(g, 0) or 0) for g in ["cx", "cz", "swap"])
+		num_2q = self.count_2q_by_arity(qc)
 		num_noncliff = int(sum(int(v or 0) for v in gc.values()) - num_cliff)
 
 		return {

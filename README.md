@@ -129,6 +129,35 @@ This layer captures costs incurred **after execution**.
 
 ---
 
+## Usage
+
+```python
+from qbacmet import collector
+
+with collector.collect():          # every collect() starts a fresh collection; safe in threads
+    tqc = transpile(qc, backend)   # hooked: Layers 1-3, SWAPs inserted by routing
+    backend.run(tqc, shots=1024)   # hooked: execution time, shots
+metrics = collector.metrics        # this thread's last collection
+```
+
+For runs the hooks cannot see (a separate executable, as for QFw's local simulators), set the layers
+explicitly and finalize when the run ends:
+
+```python
+from qbacmet import QBacMetCollector
+c = QBacMetCollector()
+with c.collect(hooks=False):
+    c.set_algorithm_from_qasm(qasm, shots=1024)
+    c.set_backend_features(backend="nwqsim", sub_backend="MPI", np=4)
+c.set_timeline(created=t0, resources_ready=t1, launched=t2, started=t3, completed=t4)
+metrics = c.finalize()             # JSON-safe copy
+```
+
+Values that change between submissions (queue length, calibration, partition load) are read fresh at the end
+of every collection, carry `rt_fetched_at`, and are recorded as `rt_error` when a read fails.
+
+Tests: `python -m unittest discover -s tests` (run in the QFw environment, qfwVirtEnv).
+
 ## Installation
 
 ```bash

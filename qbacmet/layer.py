@@ -89,6 +89,23 @@ class Layer:
 			return None
 
 	@staticmethod
+	def count_2q_by_arity(qc):
+		"""Two-qubit operations counted by how many qubits they act on, so every native gate set counts
+		(cx, cz, ecr, ms, rzz, ...), not only a fixed list of names. Barriers are not gates."""
+		try:
+			return sum(1 for ci in qc.data if len(ci.qubits) == 2 and ci.operation.name != "barrier")
+		except Exception:
+			return None
+
+	@staticmethod
+	def depth_2q(qc):
+		"""Depth counting only two-qubit operations (what limits hardware runtime and fidelity)."""
+		try:
+			return qc.depth(lambda ci: len(ci.qubits) == 2 and ci.operation.name != "barrier")
+		except Exception:
+			return None
+
+	@staticmethod
 	def find_first_in_frames(pred, max_depth=50):
 		# Scan caller frames for first local value matching predicate
 		f = inspect.currentframe()

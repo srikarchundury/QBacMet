@@ -2,15 +2,21 @@
 from .layer import Layer
 import os
 import subprocess
+import threading
+import time
+
+# Job-level Slurm facts do not change during a job: look them up once per process, not once per circuit.
+_STATIC_CACHE = {}
+_STATIC_LOCK = threading.Lock()
 
 
 class SlurmLayer(Layer):
 	def __init__(self):
 		super().__init__()
 
-	def _run_cmd(self, cmd):
+	def _run_cmd(self, cmd, timeout=10):
 		try:
-			res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+			res = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=timeout)
 			out = (res.stdout or "").strip()
 			return out if out else None
 		except Exception:
@@ -32,17 +38,66 @@ class SlurmLayer(Layer):
 		txt = self._run_cmd(["scontrol", "show", "job", str(job_id)])
 		return self._parse_scontrol_kv(txt)
 
-	def auto_collect(self):
+	def _static(self, job_id, nodelist):
+		key = (job_id, nodelist)
+		with _STATIC_LOCK:
+			if key not in _STATIC_CACHE:
+				hosts = self._run_cmd(["scontrol", "show", "hostnames", nodelist]) if nodelist else None
+				_STATIC_CACHE[key] = {
+					"slurm_version": self._run_cmd(["sinfo", "--version"]),
+					"job": self._scontrol_show_job(job_id) if job_id else {},
+					"hostlist": hosts.split() if hosts else None,
+				}
+			return _STATIC_CACHE[key]
+
+	def get_partitions(self):
+		"""{partition: {"avail", "nodes", "state"}} from sinfo, or {"error": ...}."""
+		txt = self._run_cmd(["sinfo", "-h", "-o", "%P|%a|%D|%T"])
+		if txt is None:
+			return {"error": "sinfo unavailable"}
+		out = {}
+		for line in txt.splitlines():
+			parts = line.split("|")
+			if len(parts) == 4:
+				name = parts[0].rstrip("*")
+				out.setdefault(name, []).append({"avail": parts[1], "nodes": self.to_int(parts[2]), "state": parts[3]})
+		return out
+
+	def get_nodes(self):
+		"""{node: state} from sinfo, or {"error": ...}."""
+		txt = self._run_cmd(["sinfo", "-h", "-N", "-o", "%N|%T"])
+		if txt is None:
+			return {"error": "sinfo unavailable"}
+		return dict(line.split("|", 1) for line in txt.splitlines() if "|" in line)
+
+	def realtime_partition_load(self, partition):
+		"""Fresh node counts (allocated, idle, other, total) of a partition; never cached."""
+		if not partition:
+			return {}
+		txt = self._run_cmd(["sinfo", "-h", "-p", partition, "-o", "%F"])
+		out = {"rt_fetched_at": time.time()}
+		if txt and txt.count("/") == 3:
+			a, i, o, t = (self.to_int(x) for x in txt.split()[0].split("/"))
+			out.update(rt_partition_nodes_alloc=a, rt_partition_nodes_idle=i, rt_partition_nodes_other=o,
+			           rt_partition_nodes_total=t)
+		else:
+			out["rt_error"] = "sinfo unavailable"
+		return out
+
+	def auto_collect(self, realtime=False):
 		self.metrics = {}
 		self.features = {}
 
 		job_id = os.environ.get("SLURM_JOB_ID")
+		nodelist = os.environ.get("SLURM_JOB_NODELIST")
+		static = self._static(job_id, nodelist)
 		self.features["in_slurm_job"] = True if job_id else False
-		self.features["slurm_version"] = self._run_cmd(["sinfo", "--version"])
+		self.features["slurm_version"] = static["slurm_version"]
 
 		self.metrics["job_id"] = self.to_int(job_id)
 		self.metrics["partition"] = os.environ.get("SLURM_JOB_PARTITION")
-		self.metrics["nodelist"] = os.environ.get("SLURM_JOB_NODELIST")
+		self.metrics["nodelist"] = nodelist
+		self.metrics["hostlist"] = static["hostlist"]
 		self.metrics["ntasks"] = self.to_int(os.environ.get("SLURM_NTASKS"))
 		self.metrics["cpus_on_node"] = self.to_int(os.environ.get("SLURM_CPUS_ON_NODE"))
 		self.metrics["scheduling_policy"] = os.environ.get("SLURM_SCHEDULING_POLICY")
@@ -54,7 +109,7 @@ class SlurmLayer(Layer):
 		self.features["step_id"] = os.environ.get("SLURM_STEP_ID")
 
 		if job_id:
-			info = self._scontrol_show_job(job_id)
+			info = static["job"]
 			self.metrics["num_nodes"] = self.to_int(info.get("NumNodes"))
 			self.metrics["num_cpus"] = self.to_int(info.get("NumCPUs"))
 			self.metrics["num_tasks"] = self.to_int(info.get("NumTasks"))
@@ -63,5 +118,8 @@ class SlurmLayer(Layer):
 			self.features["qos"] = info.get("QOS")
 			self.features["time_limit"] = info.get("TimeLimit")
 			self.features["tres"] = info.get("TRES")
+
+		if realtime:
+			self.metrics.update(self.realtime_partition_load(self.metrics["partition"]))
 
 		return self.get_payload()

@@ -1,21 +1,112 @@
 # qbacmet/layer_3.py
 from .layer import Layer
 import os
+import time
 
 
 class BackendLayer(Layer):
 	def __init__(self):
 		super().__init__()
 
-	def auto_collect(self, backend_obj=None, **kwargs):
+	def auto_collect(self, backend_obj=None, realtime=True, **kwargs):
 		if "env_backend" not in self.features:
 			self.features["env_backend"] = os.environ.get("QBACMET_BACKEND")
 
 		if backend_obj is not None:
 			self.set_backend_details(backend_obj)
 			self._auto_infer_backend_features(backend_obj)
+			if realtime:
+				self.metrics.update(self.realtime_snapshot(backend_obj))
 
 		return self.get_payload()
+
+	def set_simulator_features(self, **features):
+		"""Features the caller knows (simulation method, device, precision, bond dimension, processes, ...)."""
+		for k, v in features.items():
+			self.features[k] = self.json_safe(v)
+
+	def realtime_snapshot(self, backend_obj):
+		"""Values that change between submissions, read from the backend now and never cached: status and
+		queue, and for devices with a Qiskit Target the current calibration (medians over qubits and gates).
+		Every value carries rt_fetched_at; a failed read is recorded as rt_error, not filled from older data."""
+		out = {"rt_fetched_at": time.time()}
+		errors = []
+
+		try:
+			st = backend_obj.status() if callable(getattr(backend_obj, "status", None)) else None
+			if st is not None:
+				out["rt_operational"] = getattr(st, "operational", None)
+				out["rt_pending_jobs"] = getattr(st, "pending_jobs", None)
+				out["rt_status_msg"] = getattr(st, "status_msg", None)
+		except Exception as e:
+			errors.append(f"status: {e}")
+
+		try:
+			target = getattr(backend_obj, "target", None)
+			if target is not None and getattr(target, "num_qubits", None):
+				out.update(self._calibration_medians(target))
+		except Exception as e:
+			errors.append(f"target: {e}")
+
+		try:
+			props = backend_obj.properties() if callable(getattr(backend_obj, "properties", None)) else None
+			when = getattr(props, "last_update_date", None) if props is not None else None
+			if when is not None:
+				out["rt_calibration_time"] = str(when)
+				try:
+					out["rt_calibration_age_s"] = time.time() - when.timestamp()
+				except Exception:
+					pass
+		except Exception as e:
+			errors.append(f"properties: {e}")
+
+		if errors:
+			out["rt_error"] = "; ".join(errors)[:500]
+		return out
+
+	@staticmethod
+	def _median(vals):
+		vals = sorted(v for v in vals if v is not None)
+		if not vals:
+			return None
+		m = len(vals) // 2
+		return vals[m] if len(vals) % 2 else 0.5 * (vals[m - 1] + vals[m])
+
+	def _calibration_medians(self, target):
+		e1, e2, ro, t1, t2, d2 = [], [], [], [], [], []
+		for name in target.operation_names:
+			try:
+				props = target[name]
+			except Exception:
+				continue
+			if not hasattr(props, "items"):
+				continue
+			for qargs, p in props.items():
+				if qargs is None or p is None:
+					continue
+				err = getattr(p, "error", None)
+				if err is None or err >= 0.5:      # unusable elements are listed with error >= 0.5
+					continue
+				if name == "measure":
+					ro.append(err)
+				elif len(qargs) == 1 and name not in ("delay", "reset", "id"):
+					e1.append(err)
+				elif len(qargs) == 2:
+					e2.append(err)
+					d2.append(getattr(p, "duration", None))
+		for q in range(target.num_qubits):
+			try:
+				qp = target.qubit_properties[q] if target.qubit_properties else None
+			except Exception:
+				qp = None
+			if qp is not None:
+				t1.append(getattr(qp, "t1", None))
+				t2.append(getattr(qp, "t2", None))
+		return {"rt_num_qubits": target.num_qubits,
+		        "rt_median_1q_error": self._median(e1), "rt_median_2q_error": self._median(e2),
+		        "rt_median_readout_error": self._median(ro), "rt_median_t1_s": self._median(t1),
+		        "rt_median_t2_s": self._median(t2), "rt_median_2q_duration_s": self._median(d2),
+		        "rt_usable_2q_gates": len(e2)}
 
 	def set_backend_details(self, backend_obj):
 		name = self.safe_call(backend_obj, "name")
