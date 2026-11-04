@@ -4,3 +4,8 @@ qbacmet.egg-info/
 qbacmetc/__pycache__/
 tests/__pycache__/
 benchmarks/*.yaml
+# raw data and caches stay local
+stats/
+stats_sofar/
+__pycache__/
+*.pyc
