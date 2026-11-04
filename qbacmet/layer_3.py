@@ -15,7 +15,7 @@ class BackendLayer(Layer):
 		if backend_obj is not None:
 			self.set_backend_details(backend_obj)
 			self._auto_infer_backend_features(backend_obj)
-			if realtime:
+			if realtime and "rt_fetched_at" not in self.metrics:     # taken when the backend was first seen
 				self.metrics.update(self.realtime_snapshot(backend_obj))
 
 		return self.get_payload()

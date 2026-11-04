@@ -373,6 +373,11 @@ class QBacMetCollector:
 		self.set_algorithm_object(qc, shots=shots)
 		return qc
 
+	def set_backend(self, backend_obj):
+		"""Name the backend object in use. Its fresh status / queue / calibration are read now (submission
+		time), once per collection."""
+		self._note_backend(backend_obj)
+
 	def set_backend_features(self, **features):
 		"""Layer 3 features known to the caller (backend, sub-backend, method, device, precision, processes...)."""
 		self.backend_layer.set_simulator_features(**features)
@@ -398,6 +403,8 @@ class QBacMetCollector:
 		self._last_qiskit_backend = backend_obj
 		try:
 			self.backend_layer.set_backend_details(backend_obj)
+			if getattr(self, "_realtime", True) and "rt_fetched_at" not in self.backend_layer.metrics:
+				self.backend_layer.metrics.update(self.backend_layer.realtime_snapshot(backend_obj))
 		except Exception:
 			pass
 		_wrap_backend_run(backend_obj)
