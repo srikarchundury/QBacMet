@@ -8,6 +8,7 @@ import time
 # Job-level Slurm facts do not change during a job: look them up once per process, not once per circuit.
 _STATIC_CACHE = {}
 _STATIC_LOCK = threading.Lock()
+_RT_CACHE = {}      # partition -> last partition-load reading (see realtime_partition_load)
 
 
 class SlurmLayer(Layer):
@@ -71,20 +72,31 @@ class SlurmLayer(Layer):
 		return dict(line.split("|", 1) for line in txt.splitlines() if "|" in line)
 
 	def realtime_partition_load(self, partition):
-		"""Fresh node counts (allocated, idle, other, total) of a partition; never cached."""
+		"""Node counts (allocated, idle, other, total) of a partition, read with sinfo.
+
+		A reading is reused for at most QBACMET_RT_TTL seconds (default 10) so a burst of circuits does not
+		start one sinfo each; rt_fetched_at is the time of the actual reading, so its age is always known.
+		QBACMET_RT_TTL=0 reads every time."""
 		if not partition:
 			return {}
+		ttl = float(os.environ.get("QBACMET_RT_TTL", "10"))
+		with _STATIC_LOCK:
+			hit = _RT_CACHE.get(partition)
+			if hit is not None and time.time() - hit["rt_fetched_at"] < ttl:
+				return dict(hit)
 		txt = self._run_cmd(["sinfo", "-h", "-p", partition, "-o", "%F"])
 		out = {"rt_fetched_at": time.time()}
 		if txt and txt.count("/") == 3:
 			a, i, o, t = (self.to_int(x) for x in txt.split()[0].split("/"))
 			out.update(rt_partition_nodes_alloc=a, rt_partition_nodes_idle=i, rt_partition_nodes_other=o,
 			           rt_partition_nodes_total=t)
+			with _STATIC_LOCK:
+				_RT_CACHE[partition] = dict(out)
 		else:
 			out["rt_error"] = "sinfo unavailable"
 		return out
 
-	def auto_collect(self, realtime=False):
+	def auto_collect(self, realtime=False, rt=None):
 		self.metrics = {}
 		self.features = {}
 
@@ -119,7 +131,9 @@ class SlurmLayer(Layer):
 			self.features["time_limit"] = info.get("TimeLimit")
 			self.features["tres"] = info.get("TRES")
 
-		if realtime:
+		if rt is not None:          # read when the collection started, i.e. before the run
+			self.metrics.update(rt)
+		elif realtime:
 			self.metrics.update(self.realtime_partition_load(self.metrics["partition"]))
 
 		return self.get_payload()

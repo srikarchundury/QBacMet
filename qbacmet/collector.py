@@ -18,6 +18,7 @@ so no hook can see the run):
     metrics = c.finalize()                 # JSON-safe snapshot of all six layers
 """
 import contextlib
+import os
 import copy
 import threading
 import time
@@ -327,6 +328,13 @@ class QBacMetCollector:
 		self.start_collecting()
 		self._realtime = realtime
 		self._hooks_wanted = hooks
+		# dynamic Slurm state is read now, before the user's code runs (backend state: when the backend is named)
+		self._rt_slurm = None
+		if realtime:
+			try:
+				self._rt_slurm = self.slurm_layer.realtime_partition_load(os.environ.get("SLURM_JOB_PARTITION"))
+			except Exception as e:
+				self._rt_slurm = {"rt_error": f"partition load: {e}"}
 		_stack().append(self)
 		if hooks:
 			with _LOCK:
@@ -459,7 +467,7 @@ class QBacMetCollector:
 	# ---- payload
 	def auto_collect_all(self):
 		realtime = getattr(self, "_realtime", True)
-		self.metrics["slurm"] = self.slurm_layer.auto_collect(realtime=realtime)
+		self.metrics["slurm"] = self.slurm_layer.auto_collect(realtime=realtime, rt=getattr(self, "_rt_slurm", None))
 
 		if self.alg_layer.metrics.get("framework") is None and self._last_algo_obj is not None:
 			try:

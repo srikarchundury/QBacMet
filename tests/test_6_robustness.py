@@ -118,6 +118,22 @@ class TestRobustness(unittest.TestCase):
 		c.set_backend_features(backend="b")
 		self.assertEqual(snap["backend"]["features"]["backend"], "a")
 
+	def test_dynamic_values_read_before_the_run(self):
+		import os
+		from unittest import mock
+		from qbacmet import SlurmLayer
+		calls = []
+		with mock.patch.dict(os.environ, {"SLURM_JOB_PARTITION": "batch", "QBACMET_RT_TTL": "0"}), \
+				mock.patch.object(SlurmLayer, "_run_cmd",
+				                  lambda self, cmd, timeout=10: calls.append((cmd, time.time())) or "1/2/3/6"):
+			c = QBacMetCollector()
+			with c.collect(hooks=False):
+				t_run = time.time()
+			reads = [t for cmd, t in calls if "-p" in cmd]
+		self.assertEqual(len(reads), 1)                    # one reading, taken at the start
+		self.assertLessEqual(reads[0], t_run)
+		self.assertEqual(c.metrics["slurm"]["metrics"]["rt_partition_nodes_idle"], 2)
+
 	def test_realtime_snapshot_from_target(self):
 		try:
 			from qiskit.providers.fake_provider import GenericBackendV2
