@@ -129,6 +129,19 @@ This layer captures costs incurred **after execution**.
 
 ---
 
+### Coverage today
+
+The list above is the full schema. Collected today:
+
+| Layer | What is collected |
+|---|---|
+| 0 | All items, plus the partition's node load, read before the run (`rt_partition_nodes_*`) |
+| 1 | All circuit items for Qiskit and PennyLane, and shots |
+| 2 | Transpile knobs; post-transpile depth, width, 2q gates and 2q depth, SWAPs inserted by routing, connectivity |
+| 3 | Simulator flag, method, device and precision. For hardware with a Qiskit `Target`: status, pending jobs, median 1q/2q/readout error, T1/T2, calibration age (`rt_*`, read at submission). CLOPS and quantum volume are not collected. |
+| 4 | Transpile and execution time, MPI/OpenMP context, and stage timings when the framework supplies them (`set_timeline`) |
+| 5 | Result marshalling time when supplied. Mitigation and QEC times are not collected yet. |
+
 ## Usage
 
 ```python
